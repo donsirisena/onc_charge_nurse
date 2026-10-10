@@ -69,8 +69,14 @@
     return new Promise((resolve,reject)=>{
       const request=getCclRequest();
       if(!request) return reject(new Error('XMLCCLREQUEST is unavailable outside PowerChart'));
-      const d=formatPromptDate(date);
-      const args='^MINE^,^'+d+'^,^'+d+'^';
+  const d = formatPromptDate(date);
+
+  const args =
+    '^MINE^,^' +
+    d +
+    '^,^' +
+    d + ' 23:59:59' +
+    '^';
       try {
         request.onreadystatechange=function(){
           if(request.readyState!==4) return;
