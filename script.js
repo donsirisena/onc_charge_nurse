@@ -36,7 +36,18 @@
   ];
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function todayLocal() { const d = new Date(); return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'); }
-  function formatPromptDate(iso) { if(CONFIG.cclDateFormat==='YYYY-MM-DD') return iso; const [y,m,d]=iso.split('-'); return m+'/'+d+'/'+y; }
+  function formatPromptDate(iso) {
+    const months = [
+        'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+        'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
+    ];
+
+    const parts = iso.split('-');
+
+    return parts[2] + '-' +
+           months[Number(parts[1]) - 1] + '-' +
+           parts[0];
+}
   function displayDate(iso) { const [y,m,d]=iso.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'}); }
   function dateFromAppointment(a) { const m=String(a.apptDttm||'').match(/^(\d{4})-([A-Za-z]{3})-(\d{2})/); if(!m) return ''; const months=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']; return m[1]+'-'+String(months.indexOf(m[2].toUpperCase())+1).padStart(2,'0')+'-'+m[3]; }
   function timeOf(a) { const m=String(a.apptDttm||'').match(/\b(\d{2}:\d{2})\b/); return m?m[1]:'—'; }
