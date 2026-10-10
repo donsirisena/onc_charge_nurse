@@ -206,7 +206,17 @@
     } finally {state.loading=false;$('refreshButton').disabled=false;}
   }
   function bind() {
-    $('appointmentDate').addEventListener('change',e=>{if(!e.target.value)return;state.date=e.target.value;state.collapsed.clear();load();});
+    $('appointmentDate').addEventListener('change', e => {
+    if (!e.target.value) return;
+
+    state.date = e.target.value;
+    state.appointments = [];
+    state.attending = 'all';
+    state.collapsed.clear();
+
+    render();
+    load();
+});
     $('attendingFilter').addEventListener('change',e=>{state.attending=e.target.value;render();});
     $('searchBox').addEventListener('input',e=>{state.search=e.target.value.trim();render();});
     $('showNotes').addEventListener('change',render);
