@@ -943,12 +943,36 @@
       'click', () => dialog.close()
     );
 
-    $('previewPrint').addEventListener('click', () => {
-      buildPrint();
-      document.body.classList.add('print-preview-visible');
-      dialog.close();
-      $('printArea').scrollIntoView({ behavior: 'smooth' });
+    
+$('previewPrint').addEventListener('click', () => {
+  buildPrint();
+
+  // Add Close Preview button above the printed report
+  const printArea = $('printArea');
+
+  let closeButton = document.getElementById('closePrintPreview');
+
+  if (!closeButton) {
+    closeButton = document.createElement('button');
+    closeButton.id = 'closePrintPreview';
+    closeButton.type = 'button';
+    closeButton.className = 'close-preview-button no-print';
+    closeButton.textContent = '✕ Close Preview';
+
+    printArea.insertBefore(closeButton, printArea.firstChild);
+
+    closeButton.addEventListener('click', () => {
+      document.body.classList.remove('print-preview-visible');
+      printArea.innerHTML = '';
     });
+  }
+
+  document.body.classList.add('print-preview-visible');
+  dialog.close();
+
+  printArea.scrollIntoView({ behavior: 'smooth' });
+});
+
 
     $('doPrint').addEventListener('click', () => {
       buildPrint();
