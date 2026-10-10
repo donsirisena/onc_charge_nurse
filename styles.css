@@ -107,3 +107,14 @@
 .palette-swatch.green { background: #b6e0b7; }
 .palette-swatch.pink { background: #f2b9d0; }
 .palette-clear { background: #fff; font-size: 17px; }
+/* Hide dashboard appointment list during Print Preview */
+@media screen {
+    body.print-preview-visible .groups {
+        display: none !important;
+    }
+
+    body.print-preview-visible .print-only {
+        position: relative;
+        z-index: 2;
+    }
+}
