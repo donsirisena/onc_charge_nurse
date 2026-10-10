@@ -1,6 +1,7 @@
 
-/* Oncology Charge Nurse Dashboard — prototype v1
- * Operational notes and highlights are SESSION ONLY (not saved).
+/* Oncology Charge Nurse Dashboard
+ * Compact layout: Patient/MRN combined, expandable notes,
+ * single highlight palette. Notes remain SESSION ONLY.
  */
 (function () {
   'use strict';
@@ -113,12 +114,9 @@
       'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
       'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
     ];
-
     const parts = iso.split('-');
-
     return parts[2] + '-' +
-      months[Number(parts[1]) - 1] + '-' +
-      parts[0];
+      months[Number(parts[1]) - 1] + '-' + parts[0];
   }
 
   function displayDate(iso) {
@@ -138,14 +136,11 @@
     const m = String(a.apptDttm || '').match(
       /^(\d{4})-([A-Za-z]{3})-(\d{2})/
     );
-
     if (!m) return '';
-
     const months = [
       'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
       'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
     ];
-
     return m[1] + '-' +
       String(months.indexOf(m[2].toUpperCase()) + 1).padStart(2, '0') +
       '-' + m[3];
@@ -159,22 +154,19 @@
   function notice(message, error) {
     const n = $('notice');
     n.textContent = message;
-    n.className =
-      'notice' +
+    n.className = 'notice' +
       (message ? ' visible' : '') +
       (error ? ' error' : '');
   }
 
   function normalized(raw) {
     const x = {};
-
     Object.keys(raw || {}).forEach(k => {
       x[
         k.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
           .replace(/^([A-Z])/, c => c.toLowerCase())
       ] = raw[k];
     });
-
     return {
       ...x,
       schedEventId: Number(x.schedEventId || 0),
@@ -195,26 +187,16 @@
 
   function parseReply(text) {
     let data = JSON.parse(text);
-
-    if (typeof data === 'string') {
-      data = JSON.parse(data);
-    }
-
+    if (typeof data === 'string') data = JSON.parse(data);
     const root = data.REPLY || data.reply || data;
     let list = root.LIST || root.list || [];
-
     if (list && !Array.isArray(list)) {
       list = list.APPOINTMENT ||
-        list.appointment ||
-        list.ITEM ||
-        list.item ||
-        [list];
+        list.appointment || list.ITEM || list.item || [list];
     }
-
     if (!Array.isArray(list)) {
       throw new Error('Unexpected CCL reply: LIST is not an array');
     }
-
     return list.map(normalized).filter(
       a => a.schedEventId && !excludedTypes.has(a.apptType)
     );
@@ -226,59 +208,42 @@
         return new window.XMLCclRequest();
       }
     } catch (e) {}
-
     try {
-      if (
-        window.external &&
-        typeof window.external.DiscernObjectFactory === 'function'
-      ) {
+      if (window.external &&
+          typeof window.external.DiscernObjectFactory === 'function') {
         return window.external.DiscernObjectFactory('XMLCCLREQUEST');
       }
     } catch (e) {}
-
     return null;
   }
 
   function fetchCcl(date) {
     return new Promise((resolve, reject) => {
       const request = getCclRequest();
-
       if (!request) {
-        return reject(
-          new Error('XMLCCLREQUEST is unavailable outside PowerChart')
-        );
+        return reject(new Error(
+          'XMLCCLREQUEST is unavailable outside PowerChart'
+        ));
       }
-
       const d = formatPromptDate(date);
-
-      const args =
-        '^MINE^,^' +
-        d +
-        '^,^' +
-        d + ' 23:59:59' +
-        '^';
-
+      const args = '^MINE^,^' + d + '^,^' + d + ' 23:59:59' + '^';
       try {
         request.onreadystatechange = function () {
           if (request.readyState !== 4) return;
-
           const status = Number(request.status || 0);
-
           if (status && status !== 200) {
-            return reject(
-              new Error('CCL request returned status ' + status)
-            );
+            return reject(new Error(
+              'CCL request returned status ' + status
+            ));
           }
-
           try {
             resolve(parseReply(request.responseText || ''));
           } catch (e) {
-            reject(
-              new Error('Unable to parse CCL JSON: ' + e.message)
-            );
+            reject(new Error(
+              'Unable to parse CCL JSON: ' + e.message
+            ));
           }
         };
-
         request.open('GET', CONFIG.cclProgram, true);
         request.send(args);
       } catch (e) {
@@ -289,96 +254,62 @@
 
   function editsFor(a) {
     const k = String(a.schedEventId);
-
     if (!state.edits.has(k)) {
-      state.edits.set(k, {
-        note: '',
-        highlight: ''
-      });
+      state.edits.set(k, { note: '', highlight: '' });
     }
-
     return state.edits.get(k);
   }
 
   function visible() {
     const q = state.search.toLowerCase();
-
     return state.appointments.filter(a =>
-      (
-        state.attending === 'all' ||
-        String(a.attendingPersonId || a.attending) === state.attending
-      ) &&
-      (
-        !q ||
-        a.ptName.toLowerCase().includes(q) ||
-        a.mrn.toLowerCase().includes(q)
-      )
+      (state.attending === 'all' ||
+       String(a.attendingPersonId || a.attending) === state.attending) &&
+      (!q ||
+       a.ptName.toLowerCase().includes(q) ||
+       a.mrn.toLowerCase().includes(q))
     );
   }
 
   function allAttendingOptions() {
     const map = new Map();
-
     state.appointments.forEach(a => {
       const key = String(a.attendingPersonId || a.attending);
-
-      if (!map.has(key)) {
-        map.set(key, a.attending);
-      }
+      if (!map.has(key)) map.set(key, a.attending);
     });
-
-    return [...map].sort(
-      (a, b) => a[1].localeCompare(b[1])
-    );
+    return [...map].sort((a, b) => a[1].localeCompare(b[1]));
   }
 
   function setOptions() {
     const options = allAttendingOptions();
     const selected = state.attending;
-
     $('attendingFilter').innerHTML =
       '<option value="all">All Attendings</option>' +
       options.map(([k, n]) =>
-        '<option value="' + esc(k) + '">' +
-        esc(n) +
-        '</option>'
+        '<option value="' + esc(k) + '">' + esc(n) + '</option>'
       ).join('');
-
     state.attending = options.some(([k]) => k === selected)
-      ? selected
-      : 'all';
-
+      ? selected : 'all';
     $('attendingFilter').value = state.attending;
-
     $('printAttending').innerHTML =
       '<option value="current">Use dashboard selection</option>' +
       '<option value="all">All Attendings</option>' +
       options.map(([k, n]) =>
-        '<option value="' + esc(k) + '">' +
-        esc(n) +
-        '</option>'
+        '<option value="' + esc(k) + '">' + esc(n) + '</option>'
       ).join('');
   }
 
   function grouped(list) {
     const groups = new Map();
-
     list.forEach(a => {
       const physician = a.attending || 'Unassigned attending';
-
       if (!groups.has(physician)) {
         groups.set(physician, new Map());
       }
-
       const types = groups.get(physician);
-
-      if (!types.has(a.apptType)) {
-        types.set(a.apptType, []);
-      }
-
+      if (!types.has(a.apptType)) types.set(a.apptType, []);
       types.get(a.apptType).push(a);
     });
-
     return [...groups]
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([name, types]) => ({
@@ -394,38 +325,29 @@
       }));
   }
 
-  // Appointment time is display-only.
-  // Checked In appears as a green badge.
-  // The separate appointment status column has been removed.
+  // Compact appointment table
 
   function render() {
+    closePalette();
+
     const list = visible();
     const groups = grouped(list);
 
     $('appointmentCount').textContent = list.length;
     $('attendingCount').textContent = groups.length;
-
     $('notesCount').textContent =
       list.filter(a => editsFor(a).note.trim()).length;
-
     $('completedCount').textContent =
       list.filter(a =>
         /checked[ -]?in/i.test(a.apptStatus || '')
       ).length;
 
     $('filterSummary').textContent =
-      displayDate(state.date) +
-      ' · ' +
-      (
-        state.attending === 'all'
-          ? 'All Attendings'
-          : (
-            $('attendingFilter').selectedOptions[0]?.textContent || ''
-          )
-      ) +
-      ' · ' +
-      list.length +
-      ' appointments';
+      displayDate(state.date) + ' · ' +
+      (state.attending === 'all'
+        ? 'All Attendings'
+        : ($('attendingFilter').selectedOptions[0]?.textContent || '')) +
+      ' · ' + list.length + ' appointments';
 
     if (!list.length) {
       $('appointmentGroups').innerHTML =
@@ -466,8 +388,7 @@
                       <thead>
                         <tr>
                           <th>Appointment</th>
-                          <th>Patient</th>
-                          <th>MRN</th>
+                          <th>Patient / MRN</th>
                           <th>Regimen / Plan</th>
                           <th>DoT</th>
                           <th>Nurse comments / Highlight</th>
@@ -510,9 +431,10 @@
                                         data-chart="${id}">
                                   ${esc(a.ptName)}
                                 </button>
+                                <div class="patient-sub">
+                                  MRN: ${esc(a.mrn)}
+                                </div>
                               </td>
-
-                              <td>${esc(a.mrn)}</td>
 
                               <td class="regimen-cell">
                                 ${esc(plan)}
@@ -524,50 +446,25 @@
                               <td>${esc(a.dot || '—')}</td>
 
                               <td>
-                                ${showNotes
-                                  ? `<textarea
-                                      class="note-input"
-                                      data-note="${id}"
-                                      rows="1"
-                                      placeholder="Add temporary note..."
-                                    >${esc(edit.note)}</textarea>`
-                                  : ''}
-
-                                <div class="highlight-controls"
-                                     aria-label="Highlight appointment">
-
-                                  <button type="button"
-                                          class="highlight-button yellow ${edit.highlight === 'yellow' ? 'active' : ''}"
-                                          data-highlight="${id}"
-                                          data-color="yellow"
-                                          title="Yellow highlight"
-                                          aria-label="Yellow highlight">
-                                  </button>
+                                <div class="nurse-note-row">
+                                  ${showNotes
+                                    ? `<textarea
+                                        class="note-input compact-note"
+                                        data-note="${id}"
+                                        rows="1"
+                                        placeholder="Add temporary note..."
+                                        aria-label="Nurse comment for ${esc(a.ptName)}"
+                                      >${esc(edit.note)}</textarea>`
+                                    : ''}
 
                                   <button type="button"
-                                          class="highlight-button green ${edit.highlight === 'green' ? 'active' : ''}"
-                                          data-highlight="${id}"
-                                          data-color="green"
-                                          title="Green highlight"
-                                          aria-label="Green highlight">
-                                  </button>
-
-                                  <button type="button"
-                                          class="highlight-button pink ${edit.highlight === 'pink' ? 'active' : ''}"
-                                          data-highlight="${id}"
-                                          data-color="pink"
-                                          title="Pink highlight"
-                                          aria-label="Pink highlight">
-                                  </button>
-
-                                  <button type="button"
-                                          class="highlight-button clear"
-                                          data-highlight="${id}"
-                                          data-color=""
-                                          title="Remove highlight"
-                                          aria-label="Remove highlight">
-                                    ×
-                                  </button>
+                                          class="palette-trigger ${edit.highlight
+                                            ? 'has-highlight palette-' + edit.highlight
+                                            : ''}"
+                                          data-palette="${id}"
+                                          title="Choose row highlight"
+                                          aria-label="Choose row highlight for ${esc(a.ptName)}"
+                                          aria-haspopup="true">&#127912;</button>
                                 </div>
                               </td>
                             </tr>
@@ -583,6 +480,83 @@
         </article>
       `;
     }).join('');
+
+    $('appointmentGroups')
+      .querySelectorAll('.compact-note')
+      .forEach(sizeNote);
+  }
+
+  // Highlight palette popup
+
+  let palettePopup = null;
+  let paletteId = null;
+
+  function closePalette() {
+    if (palettePopup) palettePopup.remove();
+    palettePopup = null;
+    paletteId = null;
+  }
+
+  function togglePalette(button) {
+    const id = button.dataset.palette;
+
+    if (palettePopup && paletteId === id) {
+      closePalette();
+      return;
+    }
+
+    closePalette();
+    paletteId = id;
+
+    const popup = document.createElement('div');
+    popup.className = 'highlight-palette-popup';
+    popup.setAttribute('role', 'group');
+    popup.setAttribute('aria-label', 'Choose highlight colour');
+
+    popup.innerHTML =
+      '<button type="button" class="palette-swatch yellow" data-pick="yellow" title="Yellow" aria-label="Yellow highlight"></button>' +
+      '<button type="button" class="palette-swatch green" data-pick="green" title="Green" aria-label="Green highlight"></button>' +
+      '<button type="button" class="palette-swatch pink" data-pick="pink" title="Pink" aria-label="Pink highlight"></button>' +
+      '<button type="button" class="palette-clear" data-pick="" title="Remove highlight" aria-label="Remove highlight">×</button>';
+
+    document.body.appendChild(popup);
+    palettePopup = popup;
+
+    const rect = button.getBoundingClientRect();
+    const width = popup.offsetWidth;
+    const height = popup.offsetHeight;
+
+    const left = Math.max(
+      8,
+      Math.min(rect.right - width, window.innerWidth - width - 8)
+    );
+
+    const top = rect.bottom + height + 8 > window.innerHeight
+      ? rect.top - height - 5
+      : rect.bottom + 5;
+
+    popup.style.left = left + 'px';
+    popup.style.top = Math.max(8, top) + 'px';
+
+    popup.addEventListener('click', function (e) {
+      const swatch = e.target.closest('[data-pick]');
+      if (!swatch) return;
+
+      const a = findAppointment(id);
+      if (a) editsFor(a).highlight = swatch.dataset.pick;
+
+      closePalette();
+      render();
+    });
+  }
+
+  // Automatically expand notes when text wraps
+
+  function sizeNote(textarea) {
+    if (!textarea) return;
+    textarea.style.height = '29px';
+    textarea.style.height =
+      Math.max(29, textarea.scrollHeight) + 'px';
   }
 
   function findAppointment(id) {
@@ -596,7 +570,6 @@
       window.APPLINK(0, app, args);
       return true;
     }
-
     return false;
   }
 
@@ -607,7 +580,6 @@
         true
       );
     }
-
     try {
       if (!applink(
         CONFIG.navigation.chartApplication,
@@ -624,24 +596,20 @@
     }
   }
 
+  // Existing print functionality
+
   function selectedPrintList() {
     const value = $('printAttending').value;
     const key = value === 'current'
-      ? state.attending
-      : value;
-
+      ? state.attending : value;
     const q = state.search.toLowerCase();
 
     return state.appointments.filter(a =>
-      (
-        key === 'all' ||
-        String(a.attendingPersonId || a.attending) === key
-      ) &&
-      (
-        !q ||
-        a.ptName.toLowerCase().includes(q) ||
-        a.mrn.toLowerCase().includes(q)
-      )
+      (key === 'all' ||
+       String(a.attendingPersonId || a.attending) === key) &&
+      (!q ||
+       a.ptName.toLowerCase().includes(q) ||
+       a.mrn.toLowerCase().includes(q))
     );
   }
 
@@ -656,14 +624,10 @@
     };
   }
 
-  // Print functionality remains unchanged.
-  // Detailed print always includes appointment status.
-
   function buildPrint() {
     const opts = printOptions();
     const list = selectedPrintList();
     const groups = grouped(list);
-    const compact = opts.layout === 'simple';
     const worksheet = opts.layout === 'worksheet';
 
     const printAttending = $('printAttending').value;
@@ -672,50 +636,32 @@
       printAttending === 'all'
         ? 'All Attendings'
         : printAttending === 'current'
-          ? (
-            state.attending === 'all'
+          ? (state.attending === 'all'
               ? 'All Attendings'
-              : $('attendingFilter').selectedOptions[0]?.textContent
-          )
+              : $('attendingFilter').selectedOptions[0]?.textContent)
           : $('printAttending').selectedOptions[0]?.textContent;
 
     const columns = [
-      'Time',
-      'Patient',
-      'MRN',
-      'Regimen / Plan',
-      'DoT'
+      'Time', 'Patient', 'MRN', 'Regimen / Plan', 'DoT'
     ];
 
     if (opts.layout === 'detailed') {
-      columns.push(
-        'Appointment type',
-        'Resource',
-        'Appt status'
-      );
+      columns.push('Appointment type', 'Resource', 'Appt status');
     }
 
     if (opts.statuses && opts.layout !== 'detailed') {
       columns.push('Appt status');
     }
 
-    if (opts.notes) {
-      columns.push('Nurse comments');
-    }
-
-    if (worksheet) {
-      columns.push('Handwritten notes');
-    }
+    if (opts.notes) columns.push('Nurse comments');
+    if (worksheet) columns.push('Handwritten notes');
 
     const widths = opts.layout === 'detailed'
       ? [7, 15, 10, 26, 7, 17, 10, 8]
       : [10, 21, 13, 42, 14];
 
     const extra = columns.length - widths.length;
-
-    for (let i = 0; i < extra; i++) {
-      widths.push(14);
-    }
+    for (let i = 0; i < extra; i++) widths.push(14);
 
     const total = widths.reduce((a, b) => a + b, 0);
 
@@ -723,17 +669,13 @@
       '<table class="print-table"><colgroup>' +
       widths.map(w =>
         '<col style="width:' +
-        (w / total * 100).toFixed(3) +
-        '%">'
+        (w / total * 100).toFixed(3) + '%">'
       ).join('') +
       '</colgroup><thead><tr>' +
-      columns.map(c =>
-        '<th>' + esc(c) + '</th>'
-      ).join('') +
+      columns.map(c => '<th>' + esc(c) + '</th>').join('') +
       '</tr></thead><tbody>' +
       items.map(a => {
         const e = editsFor(a);
-
         const cells = [
           timeOf(a),
           a.ptName,
@@ -744,9 +686,7 @@
 
         if (opts.layout === 'detailed') {
           cells.push(
-            a.apptType,
-            a.resource || '',
-            a.apptStatus || ''
+            a.apptType, a.resource || '', a.apptStatus || ''
           );
         }
 
@@ -754,25 +694,15 @@
           cells.push(a.apptStatus || '');
         }
 
-        if (opts.notes) {
-          cells.push(e.note);
-        }
-
-        if (worksheet) {
-          cells.push('');
-        }
+        if (opts.notes) cells.push(e.note);
+        if (worksheet) cells.push('');
 
         return '<tr class="' +
-          (
-            opts.highlights && e.highlight
-              ? 'highlight-' + e.highlight
-              : ''
-          ) +
+          (opts.highlights && e.highlight
+            ? 'highlight-' + e.highlight : '') +
           (worksheet ? ' worksheet-row' : '') +
           '">' +
-          cells.map(v =>
-            '<td>' + esc(v) + '</td>'
-          ).join('') +
+          cells.map(v => '<td>' + esc(v) + '</td>').join('') +
           '</tr>';
       }).join('') +
       '</tbody></table>';
@@ -788,10 +718,8 @@
         '<section class="print-group">' +
         '<h2>' + esc(g.name) + '</h2>' +
         g.types.map(t =>
-          '<h3>' +
-          esc(t.type) +
-          ' (' + t.items.length + ')' +
-          '</h3>' +
+          '<h3>' + esc(t.type) +
+          ' (' + t.items.length + ')</h3>' +
           table(t.items)
         ).join('') +
         '</section>'
@@ -819,27 +747,24 @@
       })[opts.layout]) +
       '</h1>' +
       '<div class="print-meta">' +
-      '<span>' +
-      esc(displayDate(state.date)) +
-      ' · ' +
-      esc(physicianLabel || 'All Attendings') +
+      '<span>' + esc(displayDate(state.date)) +
+      ' · ' + esc(physicianLabel || 'All Attendings') +
       '</span>' +
-      '<span>' +
-      list.length +
+      '<span>' + list.length +
       ' appointments · Printed ' +
       esc(new Date().toLocaleString('en-CA')) +
       '</span>' +
       '</div>' +
-      (
-        list.length
-          ? body
-          : '<p>No appointments match the selected filters.</p>'
-      ) +
+      (list.length
+        ? body
+        : '<p>No appointments match the selected filters.</p>') +
       '<div class="print-footer">' +
       'Oncology Clinic · Operational appointment list · ' +
       'Handle as confidential patient information' +
       '</div></div>';
   }
+
+  // Load appointments
 
   async function load() {
     if (state.loading) return;
@@ -862,8 +787,7 @@
                 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
                 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
               ][Number(state.date.slice(5, 7)) - 1] +
-              '-' +
-              state.date.slice(8, 10)
+              '-' + state.date.slice(8, 10)
             )
           })
         );
@@ -885,11 +809,7 @@
       $('lastUpdated').textContent =
         'Refreshed ' +
         new Date().toLocaleTimeString(
-          'en-CA',
-          {
-            hour: '2-digit',
-            minute: '2-digit'
-          }
+          'en-CA', { hour: '2-digit', minute: '2-digit' }
         );
 
       setOptions();
@@ -907,6 +827,8 @@
       $('refreshButton').disabled = false;
     }
   }
+
+  // Event handlers
 
   function bind() {
     $('appointmentDate').addEventListener('change', e => {
@@ -951,38 +873,25 @@
 
       if (toggle) {
         const k = toggle.dataset.toggle;
-
         state.collapsed.has(k)
           ? state.collapsed.delete(k)
           : state.collapsed.add(k);
-
         render();
         return;
       }
 
-      // Patient name opens the chart.
-      // Appointment time has no click handler.
-
       const chart = e.target.closest('[data-chart]');
 
       if (chart) {
-        openChart(
-          findAppointment(chart.dataset.chart)
-        );
+        openChart(findAppointment(chart.dataset.chart));
         return;
       }
 
-      const highlight = e.target.closest('[data-highlight]');
+      const palette = e.target.closest('[data-palette]');
 
-      if (highlight) {
-        const a = findAppointment(
-          highlight.dataset.highlight
-        );
-
-        if (a) {
-          editsFor(a).highlight = highlight.dataset.color;
-          render();
-        }
+      if (palette) {
+        togglePalette(palette);
+        return;
       }
     });
 
@@ -992,6 +901,7 @@
 
         if (a) {
           editsFor(a).note = e.target.value;
+          sizeNote(e.target);
 
           $('notesCount').textContent =
             visible().filter(
@@ -1001,31 +911,43 @@
       }
     });
 
+    document.addEventListener('click', e => {
+      if (
+        palettePopup &&
+        !e.target.closest('.highlight-palette-popup') &&
+        !e.target.closest('[data-palette]')
+      ) {
+        closePalette();
+      }
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closePalette();
+    });
+
+    $('appointmentGroups').addEventListener(
+      'scroll', closePalette, true
+    );
+
     const dialog = $('printDialog');
 
     $('printOptionsButton').addEventListener(
-      'click',
-      () => dialog.showModal()
+      'click', () => dialog.showModal()
     );
 
     $('closePrint').addEventListener(
-      'click',
-      () => dialog.close()
+      'click', () => dialog.close()
     );
 
     $('cancelPrint').addEventListener(
-      'click',
-      () => dialog.close()
+      'click', () => dialog.close()
     );
 
     $('previewPrint').addEventListener('click', () => {
       buildPrint();
       document.body.classList.add('print-preview-visible');
       dialog.close();
-
-      $('printArea').scrollIntoView({
-        behavior: 'smooth'
-      });
+      $('printArea').scrollIntoView({ behavior: 'smooth' });
     });
 
     $('doPrint').addEventListener('click', () => {
@@ -1035,8 +957,7 @@
     });
 
     $('printForm').addEventListener(
-      'submit',
-      e => e.preventDefault()
+      'submit', e => e.preventDefault()
     );
   }
 
@@ -1046,7 +967,7 @@
   bind();
   load();
 
-  // Skip refresh while editing, printing, or page is hidden.
+  // Auto-refresh every 3 minutes
 
   setInterval(() => {
     const active = document.activeElement;
