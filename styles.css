@@ -107,7 +107,9 @@
 .palette-swatch.green { background: #b6e0b7; }
 .palette-swatch.pink { background: #f2b9d0; }
 .palette-clear { background: #fff; font-size: 17px; }
-/* Hide dashboard appointment list during Print Preview */
+
+
+/* Print Preview: hide dashboard and prevent sticky header overlap */
 @media screen {
     body.print-preview-visible .groups {
         display: none !important;
@@ -118,3 +120,28 @@
         z-index: 2;
     }
 }
+
+/* Close Preview button */
+.close-preview-button {
+    display: inline-block;
+    background: #155eaa;
+    color: #ffffff;
+    border: 1px solid #155eaa;
+    border-radius: 6px;
+    padding: 8px 14px;
+    margin-bottom: 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.close-preview-button:hover {
+    background: #0c4279;
+}
+
+@media print {
+    .close-preview-button {
+        display: none !important;
+    }
+}
+
