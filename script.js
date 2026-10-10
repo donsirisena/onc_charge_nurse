@@ -197,12 +197,13 @@
         state.appointments=await fetchCcl(state.date);
         notice('Prototype: nurse notes and highlights are temporary and are not saved to Cerner. They remain during automatic refresh but disappear when the page closes.');
       }
-      $('modeBadge').textContent=state.demo?'Demo data':'PowerChart CCL';$('modeBadge').className='badge '+(state.demo?'demo':'live');
+/*      $('modeBadge').textContent=state.demo?'Demo data':'PowerChart CCL';$('modeBadge').className='badge '+(state.demo?'demo':'live'); */
       $('lastUpdated').textContent='Refreshed '+new Date().toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'});
       setOptions();render();
     } catch(e) {
       // Preserve the last successfully loaded list and any in-session notes on refresh failure.
-      $('modeBadge').textContent='Refresh failed';$('modeBadge').className='badge';notice(e.message+' — Previous appointment data remains visible; it may be outdated.',true);
+      notice(
+    e.message + ' — Previous appointment data remains visible; it may be outdated.', true);
     } finally {state.loading=false;$('refreshButton').disabled=false;}
   }
   function bind() {
