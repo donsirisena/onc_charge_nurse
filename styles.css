@@ -85,3 +85,25 @@
     font-weight: 600;
     white-space: nowrap;
 }
+
+/* V1.3 Compact appointment list: Patient + MRN, inline note and palette */
+.appointment-table { min-width: 880px; }
+.appointment-table th:nth-child(1) { width: 12%; }
+.appointment-table th:nth-child(2) { width: 20%; }
+.appointment-table th:nth-child(3) { width: 30%; }
+.appointment-table th:nth-child(4) { width: 7%; }
+.appointment-table th:nth-child(5) { width: 31%; }
+.appointment-table td { padding-top: 4px; padding-bottom: 4px; }
+.nurse-note-row { display: flex; align-items: center; gap: 6px; width: 100%; }
+.nurse-note-row .note-input { flex: 1 1 auto; min-width: 0; width: 100%; min-height: 29px; height: 29px; padding: 5px 7px; line-height: 17px; resize: none; overflow: hidden; }
+.palette-trigger { flex: 0 0 29px; width: 29px; height: 29px; padding: 0; background: #fff; border: 1px solid #bdcbd9; border-radius: 5px; font-size: 16px; line-height: 1; cursor: pointer; }
+.palette-trigger:hover, .palette-trigger:focus { border-color: #155eaa; outline-offset: 1px; }
+.palette-trigger.palette-yellow { background: #ffdf69; }
+.palette-trigger.palette-green { background: #b6e0b7; }
+.palette-trigger.palette-pink { background: #f2b9d0; }
+.highlight-palette-popup { position: fixed; z-index: 99999; display: flex; align-items: center; gap: 5px; padding: 7px; background: #fff; border: 1px solid #bdcbd9; border-radius: 7px; box-shadow: 0 4px 14px #0003; }
+.palette-swatch, .palette-clear { width: 25px; height: 25px; padding: 0; border: 1px solid #9cabbc; border-radius: 4px; cursor: pointer; }
+.palette-swatch.yellow { background: #ffdf69; }
+.palette-swatch.green { background: #b6e0b7; }
+.palette-swatch.pink { background: #f2b9d0; }
+.palette-clear { background: #fff; font-size: 17px; }
