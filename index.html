@@ -1,5 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
+
+
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Type" content="XMLCCLREQUEST,APPLINK,MPAGES_EVENT,CCLLINK" name="discern">
@@ -7,6 +9,8 @@
   <title>Oncology Charge Nurse Dashboard</title>
   <link rel="stylesheet" href="styles.css">
 </head>
+
+
 <body>
   <header class="page-header no-print">
     <div><h1>Oncology Charge Nurse Dashboard</h1><p>Oncology Clinic · Daily appointments</p></div>
@@ -17,7 +21,24 @@
       <div class="field"><label for="appointmentDate">Appointment date</label><input id="appointmentDate" type="date"></div>
       <div class="field"><label for="attendingFilter">Attending physician</label><select id="attendingFilter"><option value="all">All Attendings</option></select></div>
       <div class="field search-field"><label for="searchBox">Search patient / MRN</label><input id="searchBox" type="search" placeholder="Search patient or MRN..."></div>
-      <div class="toolbar-actions"><button id="refreshButton" type="button" class="secondary">↻ Refresh</button><button id="printOptionsButton" type="button" class="primary">▣ Print Options</button></div>
+      <div class="toolbar-actions">
+          <button id="refreshButton" type="button" class="secondary">
+            ↻ Refresh
+          </button>
+
+          <button
+            id="runOriginalReport"
+            type="button"
+            class="primary"
+            onclick="CCLLINK('mrd_onc_nursing_schedule', '', 0)"
+        >
+           ▣ Run DRP Report
+          </button>
+
+          <button id="printOptionsButton" type="button" class="primary">
+          ▣ Print Options
+          </button>
+      </div>
     </section>
     <section class="stats no-print" aria-label="Summary">
       <div class="stat"><span>Appointments</span><strong id="appointmentCount">0</strong></div>
@@ -47,14 +68,7 @@
     </form>
   </dialog>
   <script src="script.js"></script>
-<div style="position:fixed; top:100px; right:20px; z-index:99999; background:white; padding:10px; border:2px solid red;">
-    <button
-        type="button"
-        onclick="CCLLINK('mrd_onc_nursing_schedule', '', 0)"
-    >
-        Run Original Nursing Report
-    </button>
-</div>
-  
+
+
 </body>
 </html>
