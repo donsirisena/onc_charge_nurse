@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Type" content="XMLCCLREQUEST,APPLINK,MPAGES_EVENT" name="discern">
+  <meta http-equiv="Content-Type" content="XMLCCLREQUEST,APPLINK,MPAGES_EVENT,CCLLINK" name="discern">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Oncology Charge Nurse Dashboard</title>
   <link rel="stylesheet" href="styles.css">
@@ -47,5 +47,14 @@
     </form>
   </dialog>
   <script src="script.js"></script>
+<div style="position:fixed; top:100px; right:20px; z-index:99999; background:white; padding:10px; border:2px solid red;">
+    <button
+        type="button"
+        onclick="CCLLINK('mrd_onc_nursing_schedule', '', 0)"
+    >
+        Run Original Nursing Report
+    </button>
+</div>
+  
 </body>
 </html>
