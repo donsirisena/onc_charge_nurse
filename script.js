@@ -1087,14 +1087,23 @@
 
                                           aria-haspopup="true">&#127912;</button>
 
-                                  ${!CONFIG.readOnly && showNotes ? `<button type="button" class="secondary nurse-save-button"
-                                        data-save="${id}" ${!state.notesLoaded || !isDirty(a) || state.saving.has(String(a.schedEventId)) ? 'disabled' : ''}>Save</button>
-                                    <span
-  class="nurse-save-status ${isDirty(a) ? 'is-unsaved' : 'is-saved'}"
-  data-save-status="${id}"
->
-  ${isDirty(a) ? 'Unsaved' : '✓ Saved'}
-</span>` : ''}
+                                ${!CONFIG.readOnly && showNotes ? `
+  <button
+    type="button"
+    class="secondary nurse-save-button"
+    data-save="${id}"
+    ${!state.notesLoaded || !isDirty(a) ||
+      state.saving.has(String(a.schedEventId))
+        ? 'disabled' : ''}
+  >Save</button>
+
+  <span
+    class="nurse-save-status ${isDirty(a) ? 'is-unsaved' : 'is-saved'}"
+    data-save-status="${id}"
+  >
+    ${isDirty(a) ? 'Unsaved' : '✓ Saved'}
+  </span>
+` : ''}  
                                 </div>
 
                               </td>
