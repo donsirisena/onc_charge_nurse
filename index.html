@@ -25,7 +25,13 @@
           <button id="refreshButton" type="button" class="secondary">
             ↻ Refresh
           </button>
-
+          
+          <button id="pendingCommentsButton"
+          type="button"
+          class="secondary">
+           📝 Pending Comments (<span id="pendingCount">0</span>)
+           </button>
+          
           <button
             id="runOriginalReport"
             type="button"
@@ -67,6 +73,42 @@
       <div class="dialog-actions"><button type="button" id="cancelPrint" class="secondary">Cancel</button><button type="button" id="previewPrint" class="secondary">Preview on page</button><button type="button" id="doPrint" class="primary">Print</button></div>
     </form>
   </dialog>
+  <dialog id="pendingCommentsDialog"
+        class="pending-comments-dialog no-print">
+
+  <div class="dialog-heading">
+    <h2>Pending Nurse Comments — Last 30 Days</h2>
+
+    <button id="closePendingComments"
+            type="button"
+            class="icon-button"
+            aria-label="Close">
+      ×
+    </button>
+  </div>
+
+  <p class="muted">
+    Comments from previous appointments that still need follow-up.
+  </p>
+
+  <div id="pendingCommentsList"></div>
+
+  <div class="dialog-actions">
+    <button id="refreshPendingComments"
+            type="button"
+            class="secondary">
+      ↻ Refresh
+    </button>
+
+    <button id="donePendingComments"
+            type="button"
+            class="primary">
+      Close
+    </button>
+  </div>
+
+</dialog>
+  
   <script src="script.js"></script>
 
 
