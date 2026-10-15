@@ -592,29 +592,29 @@
 
       .find(el => el.dataset.saveStatus === String(id));
 
-    if (status) { status.textContent = saving
+    if (status) {
+  const hasSavedContent = Boolean(
+    savedFor(a).note || savedFor(a).highlight
+  );
 
+  status.textContent = saving
     ? 'Saving…'
-
     : dirty
-
       ? 'Unsaved'
-
-      : '✓ Saved';
+      : hasSavedContent
+        ? '✓ Saved'
+        : '';
 
   status.classList.toggle(
-
-    'is-saved', !dirty && !saving
-
+    'is-saved',
+    !dirty && !saving && hasSavedContent
   );
 
   status.classList.toggle(
-
-    'is-unsaved', dirty && !saving
-
+    'is-unsaved',
+    dirty && !saving
   );
-
-  }
+}
 
   }
 
@@ -1162,13 +1162,23 @@
 
   <span
 
-    class="nurse-save-status ${isDirty(a) ? 'is-unsaved' : 'is-saved'}"
+    class="nurse-save-status ${
+  isDirty(a)
+    ? 'is-unsaved'
+    : (savedFor(a).note || savedFor(a).highlight)
+      ? 'is-saved'
+      : ''
+}"
 
     data-save-status="${id}"
 
   >
 
-    ${isDirty(a) ? 'Unsaved' : '✓ Saved'}
+    ${isDirty(a)
+  ? 'Unsaved'
+  : (savedFor(a).note || savedFor(a).highlight)
+    ? '✓ Saved'
+    : ''}
 
   </span>
 
