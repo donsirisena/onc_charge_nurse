@@ -414,6 +414,11 @@
       button.disabled = !dirty || saving || CONFIG.readOnly || !state.notesLoaded;
       button.textContent = saving ? 'Saving…' : 'Save';
     }
+    const discard = Array.from($('appointmentGroups').querySelectorAll('[data-discard]'))
+      .find(b => b.dataset.discard === String(id));
+    if (discard) {
+      discard.disabled = !dirty || saving || CONFIG.readOnly || !state.notesLoaded;
+    }
     const status = Array.from($('appointmentGroups').querySelectorAll('[data-save-status]'))
       .find(el => el.dataset.saveStatus === String(id));
     if (status) {
@@ -437,6 +442,14 @@
   );
 }
   }
+  function discardNote(id) {
+    const a = findAppointment(id);
+    if (!a || CONFIG.readOnly || !state.notesLoaded ||
+        state.saving.has(String(id)) || !isDirty(a)) return;
+    state.edits.set(String(id), { ...savedFor(a) });
+    render();
+  }
+
   async function loadNotes(appointments, version) {
     const ids = [...new Set(appointments.map(a => String(a.schedEventId)))]
       .filter(id => /^\d+$/.test(id) && Number(id) > 0);
@@ -709,6 +722,15 @@
       state.saving.has(String(a.schedEventId))
         ? 'disabled' : ''}
   >Save</button>
+  <button
+    type="button"
+    class="secondary nurse-discard-button"
+    data-discard="${id}"
+    title="Discard unsaved comment and highlight changes"
+    ${!state.notesLoaded || !isDirty(a) ||
+      state.saving.has(String(a.schedEventId))
+        ? 'disabled' : ''}
+  >Discard</button>
   <span
     class="nurse-save-status ${
   isDirty(a)
@@ -744,6 +766,26 @@
     $('appointmentGroups')
       .querySelectorAll('.compact-note')
       .forEach(sizeNote);
+    $('appointmentGroups').querySelectorAll('.nurse-note-row').forEach(row => {
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.flexWrap = 'nowrap';
+      row.style.gap = '5px';
+      const input = row.querySelector('.compact-note');
+      if (input) {
+        input.style.flex = '1 1 auto';
+        input.style.minWidth = '0';
+      }
+      row.querySelectorAll('button, .nurse-save-status').forEach(control => {
+        control.style.flexShrink = '0';
+      });
+      const discard = row.querySelector('.nurse-discard-button');
+      if (discard) {
+        discard.style.padding = '5px 7px';
+        discard.style.fontSize = '11px';
+        discard.style.whiteSpace = 'nowrap';
+      }
+    });
   }
   // Highlight palette popup
   let palettePopup = null;
@@ -1090,6 +1132,11 @@
         saveNote(save.dataset.save);
         return;
       }
+      const discard = e.target.closest('[data-discard]');
+      if (discard) {
+        discardNote(discard.dataset.discard);
+        return;
+      }
       const palette = e.target.closest('[data-palette]');
       if (palette) {
         togglePalette(palette);
@@ -1135,27 +1182,37 @@
     $('cancelPrint').addEventListener(
       'click', () => dialog.close()
     );
-$('previewPrint').addEventListener('click', () => {
-  buildPrint();
-  // Add Close Preview button above the printed report
-  const printArea = $('printArea');
-  let closeButton = document.getElementById('closePrintPreview');
-  if (!closeButton) {
-    closeButton = document.createElement('button');
-    closeButton.id = 'closePrintPreview';
-    closeButton.type = 'button';
-    closeButton.className = 'close-preview-button no-print';
-    closeButton.textContent = '✕ Close Preview';
-    printArea.insertBefore(closeButton, printArea.firstChild);
-    closeButton.addEventListener('click', () => {
-      document.body.classList.remove('print-preview-visible');
-      printArea.innerHTML = '';
+    $('previewPrint').addEventListener('click', () => {
+      buildPrint();
+      const printArea = $('printArea');
+      const actions = document.createElement('div');
+      actions.className = 'no-print print-preview-actions';
+      actions.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:flex-end;margin:0 0 12px 0;';
+
+      const printButton = document.createElement('button');
+      printButton.id = 'printFromPreview';
+      printButton.type = 'button';
+      printButton.className = 'primary';
+      printButton.textContent = '▣ Print';
+      printButton.addEventListener('click', () => window.print());
+
+      const closeButton = document.createElement('button');
+      closeButton.id = 'closePrintPreview';
+      closeButton.type = 'button';
+      closeButton.className = 'secondary close-preview-button';
+      closeButton.textContent = '✕ Close Preview';
+      closeButton.addEventListener('click', () => {
+        document.body.classList.remove('print-preview-visible');
+        printArea.innerHTML = '';
+      });
+
+      actions.appendChild(printButton);
+      actions.appendChild(closeButton);
+      printArea.insertBefore(actions, printArea.firstChild);
+      document.body.classList.add('print-preview-visible');
+      dialog.close();
+      printArea.scrollIntoView({ behavior: 'smooth' });
     });
-  }
-  document.body.classList.add('print-preview-visible');
-  dialog.close();
-  printArea.scrollIntoView({ behavior: 'smooth' });
-});
     $('doPrint').addEventListener('click', () => {
       buildPrint();
       dialog.close();
