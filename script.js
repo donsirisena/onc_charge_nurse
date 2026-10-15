@@ -9,6 +9,8 @@
     notesGetProgram: 'mrd_onc_nurse_notes_get:group1',
     notesSaveProgram: 'mrd_onc_nurse_notes_save:group1',
     pendingProgram: 'mrd_onc_nurse_notes_pending:group1',
+    bloodSummaryProgram: 'mrd_onc_charge_nurse_bloodwork:group1',
+    bloodDetailProgram: 'mrd_onc_charge_nurse_lab_detai:group1',
     readOnly: false,
     autoRefreshMs: 180000,
     cclDateFormat: 'MM/DD/YYYY',
@@ -39,7 +41,11 @@
     pendingLoading: false,
     pendingError: '',
     pendingClearing: new Set(),
-    pendingVersion: 0
+    pendingVersion: 0,
+    bloodPatients: new Set(),
+    bloodSummaryAvailable: false,
+    bloodPatient: null,
+    bloodRequestVersion: 0
   };
   const excludedTypes = new Set([
     'Chemo Clinic Lab Visit',
@@ -277,6 +283,80 @@
       } catch (error) { reject(error); }
     });
   }
+  // Blood results are fetched on demand; no results are stored in notes.
+  async function loadBloodSummary(appointments, version) {
+    const patients = new Set();
+    try {
+      // The summary CCL currently returns REPLY.PATIENTS.
+      const root = await cclCall(CONFIG.bloodSummaryProgram, '^MINE^');
+      const rows = root.PATIENTS || root.patients || [];
+      if (!Array.isArray(rows)) throw new Error('Unexpected blood summary reply');
+      rows.forEach(r => {
+        const person = Number(r.PERSON_ID ?? r.person_id ?? 0);
+        const encounter = Number(r.ENCNTR_ID ?? r.encntr_id ?? 0);
+        if (Number(r.RESULT_COUNT ?? r.result_count ?? 0) > 0) {
+          patients.add(person + ':' + encounter);
+        }
+      });
+      if (version !== state.loadVersion) return;
+      state.bloodPatients = patients;
+      state.bloodSummaryAvailable = true;
+    } catch (_) {
+      if (version !== state.loadVersion) return;
+      state.bloodPatients = new Set();
+      state.bloodSummaryAvailable = false;
+      // Blood summary errors must not block appointments or nurse notes.
+    }
+    render();
+  }
+
+  function closeBloodDialog() {
+    state.bloodRequestVersion++;
+    $('bloodResultsDialog').close();
+    state.bloodPatient = null;
+  }
+
+  async function loadBloodDetails() {
+    const a = state.bloodPatient;
+    if (!a) return;
+    const version = ++state.bloodRequestVersion;
+    const noticeEl = $('bloodResultsNotice');
+    const body = $('bloodResultsBody');
+    body.innerHTML = '';
+    noticeEl.textContent = 'Loading verified blood results…';
+    $('refreshBloodResults').disabled = true;
+    try {
+      const args = '^MINE^,' + String(a.personId) + ',' + String(a.encntrId);
+      const root = await cclCall(CONFIG.bloodDetailProgram, args);
+      if (version !== state.bloodRequestVersion) return;
+      const rows = root.RESULTS || root.results || [];
+      if (!Array.isArray(rows)) throw new Error('Unexpected blood details reply');
+      noticeEl.textContent = rows.length ? rows.length + ' verified numeric results' : 'No verified numeric results found.';
+      body.innerHTML = rows.map(r => {
+        const test = r.TEST_NAME ?? r.test_name ?? '';
+        const value = r.RESULT_VAL ?? r.result_val ?? '';
+        const units = r.RESULT_UNITS ?? r.result_units ?? '';
+        const verified = r.VERIFIED_DT_TM ?? r.verified_dt_tm ?? '';
+        return '<tr><td>' + esc(test) + '</td><td>' + esc(value) +
+          '</td><td>' + esc(units) + '</td><td>' + esc(verified) + '</td></tr>';
+      }).join('');
+    } catch (error) {
+      if (version !== state.bloodRequestVersion) return;
+      noticeEl.textContent = 'Unable to load blood results: ' + error.message;
+    } finally {
+      if (version === state.bloodRequestVersion) $('refreshBloodResults').disabled = false;
+    }
+  }
+
+  function openBloodDialog(a) {
+    if (!a || !a.personId || !a.encntrId) return;
+    state.bloodPatient = a;
+    $('bloodPatientName').textContent = a.ptName;
+    $('bloodPatientMRN').textContent = 'MRN: ' + a.mrn;
+    if (!$('bloodResultsDialog').open) $('bloodResultsDialog').showModal();
+    loadBloodDetails();
+  }
+
   // Historical nurse comments from the previous 30 calendar days.
   // All displayed clinical strings are escaped before insertion into HTML.
   async function loadPending() {
@@ -685,6 +765,9 @@
                                 </button>
                                 <div class="patient-sub">
                                   MRN: ${esc(a.mrn)}
+                                  ${state.bloodPatients.has(a.personId + ':' + a.encntrId)
+                                    ? `<button type="button" class="blood-results-trigger" data-blood="${id}" title="View recent blood results" aria-label="View recent blood results for ${esc(a.ptName)}">🧪 Blood</button>`
+                                    : ''}
                                 </div>
                               </td>
                               <td class="regimen-cell">
@@ -1043,6 +1126,7 @@
       setOptions();
       render();
       notice(hasUnsaved() ? 'Unsaved changes remain. Save before closing the dashboard.' : '');
+      loadBloodSummary(appointments, version);
     } catch (error) {
       notice('Refresh failed: ' + error.message +
         '. Previous appointment data remains visible; it may be outdated.', true);
@@ -1102,6 +1186,13 @@
       const clear = e.target.closest('[data-pending-clear]');
       if (clear) clearPending(clear.dataset.pendingClear);
     });
+    $('closeBloodResults').addEventListener('click', closeBloodDialog);
+    $('doneBloodResults').addEventListener('click', closeBloodDialog);
+    $('refreshBloodResults').addEventListener('click', loadBloodDetails);
+    $('bloodResultsDialog').addEventListener('close', () => {
+      state.bloodRequestVersion++;
+      state.bloodPatient = null;
+    });
     $('expandAll').addEventListener('click', () => {
       state.collapsed.clear();
       render();
@@ -1120,6 +1211,11 @@
           ? state.collapsed.delete(k)
           : state.collapsed.add(k);
         render();
+        return;
+      }
+      const blood = e.target.closest('[data-blood]');
+      if (blood) {
+        openBloodDialog(findAppointment(blood.dataset.blood));
         return;
       }
       const chart = e.target.closest('[data-chart]');
@@ -1255,7 +1351,8 @@
       editing ||
       document.hidden ||
       $('printDialog').open ||
-      $('pendingCommentsDialog').open
+      $('pendingCommentsDialog').open ||
+      $('bloodResultsDialog').open
     ) {
       return;
     }
