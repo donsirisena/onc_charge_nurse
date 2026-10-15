@@ -570,7 +570,19 @@
     }
     const status = Array.from($('appointmentGroups').querySelectorAll('[data-save-status]'))
       .find(el => el.dataset.saveStatus === String(id));
-    if (status) status.textContent = saving ? 'Saving…' : dirty ? 'Unsaved' : 'Saved';
+    if (status) { status.textContent = saving
+    ? 'Saving…'
+    : dirty
+      ? 'Unsaved'
+      : '✓ Saved';
+
+  status.classList.toggle(
+    'is-saved', !dirty && !saving
+  );
+
+  status.classList.toggle(
+    'is-unsaved', dirty && !saving
+  );
   }
 
   async function loadNotes(appointments, version) {
@@ -1077,7 +1089,12 @@
 
                                   ${!CONFIG.readOnly && showNotes ? `<button type="button" class="secondary nurse-save-button"
                                         data-save="${id}" ${!state.notesLoaded || !isDirty(a) || state.saving.has(String(a.schedEventId)) ? 'disabled' : ''}>Save</button>
-                                    <span class="nurse-save-status" data-save-status="${id}">${isDirty(a) ? 'Unsaved' : 'Saved'}</span>` : ''}
+                                    <span
+  class="nurse-save-status ${isDirty(a) ? 'is-unsaved' : 'is-saved'}"
+  data-save-status="${id}"
+>
+  ${isDirty(a) ? 'Unsaved' : '✓ Saved'}
+</span>` : ''}
                                 </div>
 
                               </td>
