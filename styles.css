@@ -94,3 +94,121 @@
 .appointment-table th:nth-child(4) { width: 7%; }
 .appointment-table th:nth-child(5) { width: 31%; }
 .appointment-table td { padding-top: 4px; padding-bottom: 4px; }
+
+/* Pending Comments popup — wide, compact, dashboard-blue theme */
+.pending-comments-dialog {
+  width: min(1040px, 94vw);
+  max-width: 1040px;
+  max-height: 88vh;
+  padding: 0;
+  border: 1px solid #b9cde1;
+  border-radius: 12px;
+  background: #f0f6fc;
+  color: #1b2939;
+  box-shadow: 0 20px 60px rgba(17, 49, 80, .28);
+  overflow: hidden;
+}
+.pending-comments-dialog::backdrop { background: rgba(15, 35, 60, .48); }
+.pending-comments-dialog .dialog-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 17px 22px;
+  background: #dceaf7;
+  border-bottom: 1px solid #c6d8e9;
+}
+.pending-comments-dialog .dialog-heading h2 {
+  margin: 0;
+  color: #1d3d5c;
+  font-size: 19px;
+  font-weight: 700;
+}
+.pending-comments-dialog .dialog-heading .icon-button {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 5px;
+  color: #365873;
+  font-size: 24px;
+  line-height: 1;
+}
+.pending-comments-dialog .dialog-heading .icon-button:hover { background: #c8dced; }
+.pending-comments-dialog > .muted {
+  display: block;
+  margin: 0;
+  padding: 11px 22px 2px;
+  color: #627387;
+  font-size: 12px;
+}
+#pendingCommentsList {
+  max-height: min(62vh, 650px);
+  overflow-y: auto;
+  margin: 0;
+  padding: 12px 22px 16px;
+}
+.pending-comment-item {
+  margin: 0 0 11px;
+  padding: 15px 18px 13px;
+  border: 1px solid #d2e0ee;
+  border-left: 4px solid #155eaa;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 5px rgba(29, 61, 92, .05);
+}
+.pending-comment-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+.pending-comment-heading strong { font-size: 14px; color: #155eaa; }
+.pending-comment-heading .muted { font-size: 12px; color: #637c96; white-space: nowrap; }
+.pending-comment-meta { margin-top: 5px; color: #667b90; font-size: 11px; }
+.pending-comment-text {
+  margin: 12px 0 11px;
+  padding: 12px 14px;
+  border: 1px solid #dbe7f2;
+  border-radius: 6px;
+  background: #f0f6fc;
+  color: #21384f;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pending-comment-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
+.pending-comment-actions button {
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.pending-comment-actions [data-pending-chart] { background: #155eaa; border-color: #155eaa; color: #fff; }
+.pending-comment-actions [data-pending-chart]:hover { background: #0c4279; }
+.pending-comment-actions [data-pending-clear] { background: #fff; border-color: #cbd6e3; color: #365873; }
+.pending-comment-actions [data-pending-clear]:hover { background: #eaf1f8; }
+.pending-comments-dialog > .dialog-actions {
+  margin: 0;
+  padding: 12px 22px;
+  border-top: 1px solid #d5e2ef;
+  background: #e8f1fa;
+}
+.pending-comments-dialog > .dialog-actions button { padding: 7px 13px; font-size: 12px; }
+#pendingCommentsButton { white-space: nowrap; }
+@media (max-width: 620px) {
+  .pending-comments-dialog { width: 96vw; max-width: 96vw; }
+  .pending-comments-dialog .dialog-heading { padding: 12px 14px; }
+  .pending-comments-dialog .dialog-heading h2 { font-size: 16px; }
+  .pending-comments-dialog > .muted { padding: 9px 14px 0; }
+  #pendingCommentsList { padding: 10px 14px; }
+  .pending-comment-item { padding: 12px; }
+  .pending-comments-dialog > .dialog-actions { padding: 10px 14px; }
+}
+@media print { .pending-comments-dialog { display: none !important; } }
