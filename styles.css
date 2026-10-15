@@ -460,3 +460,19 @@
     justify-content: center;
     white-space: nowrap;
 }
+/* Blood Results popup */
+.blood-results-trigger{margin-left:8px;border:1px solid #b7cfe4;border-radius:5px;background:#e9f3fb;color:#155eaa;padding:2px 6px;font-size:11px;font-weight:600;white-space:nowrap}
+.blood-results-trigger:hover{background:#d7eafa}
+.blood-results-dialog{width:min(900px,95vw);max-width:900px;max-height:88vh;border:1px solid #b9cde1;border-radius:12px;background:#f0f6fc;padding:0;color:#1b2939;box-shadow:0 20px 60px #112f5047}
+.blood-results-dialog::backdrop{background:#0f233c7a}
+.blood-results-dialog .dialog-heading{background:#dceaf7;border-bottom:1px solid #c6d8e9;padding:13px 18px;gap:12px}
+.blood-results-dialog .dialog-heading h2{margin:0 0 3px;font-size:18px;color:#1d3d5c}
+.blood-results-dialog .dialog-heading p{margin:0}
+.blood-results-patient{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;padding:12px 18px 4px}
+#bloodResultsNotice{padding:6px 18px}
+.blood-results-scroll{max-height:58vh;overflow:auto;margin:8px 18px;background:white;border:1px solid #d4e0ed;border-radius:6px}
+.blood-results-table{width:100%;border-collapse:collapse;font-size:12px}
+.blood-results-table th{position:sticky;top:0;background:#e0ebf5;color:#435469;text-align:left;padding:9px;border-bottom:1px solid #cbd6e3}
+.blood-results-table td{padding:8px 9px;border-bottom:1px solid #e6edf4;overflow-wrap:anywhere}
+.blood-results-dialog>.dialog-actions{margin:0;padding:12px 18px;background:#e8f1fa;border-top:1px solid #d5e2ef}
+@media print{.blood-results-dialog{display:none!important}}
