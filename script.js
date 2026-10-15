@@ -10,13 +10,14 @@
 
   'use strict';
 
-
-
   const CONFIG = {
 
     cclProgram: 'mrd_onc_charge_nurse_mpage:group1',
+
     notesGetProgram: 'mrd_onc_nurse_notes_get:group1',
+
     notesSaveProgram: 'mrd_onc_nurse_notes_save:group1',
+
     readOnly: false,
 
     autoRefreshMs: 180000,
@@ -39,11 +40,7 @@
 
   };
 
-
-
   const $ = id => document.getElementById(id);
-
-
 
   const state = {
 
@@ -58,10 +55,15 @@
     collapsed: new Set(),
 
     edits: new Map(),
+
     saved: new Map(),
+
     saving: new Set(),
+
     notesLoaded: false,
+
     notesError: false,
+
     loadVersion: 0,
 
     demo: false,
@@ -69,8 +71,6 @@
     loading: false
 
   };
-
-
 
   const excludedTypes = new Set([
 
@@ -91,8 +91,6 @@
     'Chemo Clinic MD Visit F/U Satellite'
 
   ]);
-
-
 
   const demoAppointments = [
 
@@ -180,8 +178,6 @@
 
   ];
 
-
-
   function esc(v) {
 
     return String(v == null ? '' : v).replace(
@@ -206,8 +202,6 @@
 
   }
 
-
-
   function todayLocal() {
 
     const d = new Date();
@@ -223,8 +217,6 @@
     ].join('-');
 
   }
-
-
 
   function formatPromptDate(iso) {
 
@@ -243,8 +235,6 @@
       months[Number(parts[1]) - 1] + '-' + parts[0];
 
   }
-
-
 
   function displayDate(iso) {
 
@@ -269,8 +259,6 @@
     );
 
   }
-
-
 
   function dateFromAppointment(a) {
 
@@ -298,8 +286,6 @@
 
   }
 
-
-
   function timeOf(a) {
 
     const m = String(a.apptDttm || '').match(/\b(\d{2}:\d{2})\b/);
@@ -307,8 +293,6 @@
     return m ? m[1] : '—';
 
   }
-
-
 
   function notice(message, error) {
 
@@ -323,8 +307,6 @@
       (error ? ' error' : '');
 
   }
-
-
 
   function normalized(raw) {
 
@@ -376,8 +358,6 @@
 
   }
 
-
-
   function parseReply(text) {
 
     let data = JSON.parse(text);
@@ -410,8 +390,6 @@
 
   }
 
-
-
   function getCclRequest() {
 
     try {
@@ -439,8 +417,6 @@
     return null;
 
   }
-
-
 
   function fetchCcl(date) {
 
@@ -510,155 +486,284 @@
 
   }
 
-
-
   // CCL strings are delimited with ^. Reject the delimiter rather than
+
   // allowing a comment to change the positional parameter list.
+
   function cclString(value) {
+
     const str = String(value == null ? '' : value);
+
     if (str.includes('^')) throw new Error('The ^ character is not supported in nurse comments.');
+
     return '^' + str + '^';
+
   }
 
   function cclCall(program, args) {
+
     return new Promise((resolve, reject) => {
+
       const request = getCclRequest();
+
       if (!request) return reject(new Error('XMLCCLREQUEST unavailable'));
+
       try {
+
         request.onreadystatechange = function () {
+
           if (request.readyState !== 4) return;
+
           const status = Number(request.status || 0);
+
           if (status && status !== 200) {
+
             return reject(new Error('CCL request status ' + status));
+
           }
+
           try {
+
             let result = JSON.parse(request.responseText || '');
+
             if (typeof result === 'string') result = JSON.parse(result);
+
             resolve(result.REPLY || result.reply || result);
+
           } catch (error) { reject(error); }
+
         };
+
         request.open('GET', program, true);
+
         request.send(args);
+
       } catch (error) { reject(error); }
+
     });
+
   }
 
   function savedFor(a) {
+
     return state.saved.get(String(a.schedEventId)) || { note: '', highlight: '' };
+
   }
 
   function isDirty(a) {
+
     const edit = editsFor(a);
+
     const saved = savedFor(a);
+
     return edit.note !== saved.note || edit.highlight !== saved.highlight;
+
   }
 
   function hasUnsaved() {
+
     return state.appointments.some(a => isDirty(a));
+
   }
 
   function updateSaveControls(id) {
+
     const a = findAppointment(id);
+
     if (!a) return;
+
     const dirty = isDirty(a);
+
     const saving = state.saving.has(String(id));
+
     const button = Array.from($('appointmentGroups').querySelectorAll('[data-save]'))
+
       .find(b => b.dataset.save === String(id));
+
     if (button) {
+
       button.disabled = !dirty || saving || CONFIG.readOnly || !state.notesLoaded;
+
       button.textContent = saving ? 'Saving…' : 'Save';
+
     }
+
     const status = Array.from($('appointmentGroups').querySelectorAll('[data-save-status]'))
+
       .find(el => el.dataset.saveStatus === String(id));
+
     if (status) { status.textContent = saving
+
     ? 'Saving…'
+
     : dirty
+
       ? 'Unsaved'
+
       : '✓ Saved';
 
   status.classList.toggle(
+
     'is-saved', !dirty && !saving
+
   );
 
   status.classList.toggle(
+
     'is-unsaved', dirty && !saving
+
   );
+
+  }
+
   }
 
   async function loadNotes(appointments, version) {
+
     const ids = [...new Set(appointments.map(a => String(a.schedEventId)))]
+
       .filter(id => /^\d+$/.test(id) && Number(id) > 0);
+
     // Cap per request to match the CCL parser's 500-ID limit.
+
     const nextSaved = new Map();
+
     for (let offset = 0; offset < ids.length; offset += 200) {
+
       const batch = ids.slice(offset, offset + 200);
+
       const root = await cclCall(CONFIG.notesGetProgram,
+
         '^MINE^,' + cclString(batch.join(',')));
+
       const notes = root.NOTES || root.notes || [];
+
       if (!Array.isArray(notes)) throw new Error('Unexpected nurse notes reply');
+
       notes.forEach(n => {
+
         const id = String(Number(n.SCH_EVENT_ID || n.sch_event_id || 0));
+
         const a = appointments.find(item => String(item.schedEventId) === id);
+
         if (!a) return;
+
         // Reject notes for mismatched patient/encounter IDs.
+
         if (Number(n.PERSON_ID || n.person_id) !== a.personId ||
+
             Number(n.ENCNTR_ID || n.encntr_id) !== a.encntrId) return;
+
         nextSaved.set(id, {
+
           note: String(n.NURSE_NOTE || n.nurse_note || ''),
+
           highlight: String(n.HIGHLIGHT || n.highlight || '').toLowerCase()
+
         });
+
       });
+
     }
+
     if (version !== state.loadVersion) return;
+
     const previousSaved = state.saved;
+
     const previousEdits = state.edits;
+
     const nextEdits = new Map();
+
     appointments.forEach(a => {
+
       const id = String(a.schedEventId);
+
       const saved = nextSaved.get(id) || { note: '', highlight: '' };
+
       const old = previousEdits.get(id);
+
       const before = previousSaved.get(id) || { note: '', highlight: '' };
+
       const dirty = old && (old.note !== before.note || old.highlight !== before.highlight);
+
       nextEdits.set(id, dirty ? { ...old } : { ...saved });
+
     });
+
     state.saved = nextSaved;
+
     state.edits = nextEdits;
+
     state.notesLoaded = true;
+
     state.notesError = false;
+
   }
 
   async function saveNote(id) {
+
     const a = findAppointment(id);
+
     if (!a || CONFIG.readOnly || !state.notesLoaded || !isDirty(a) ||
+
         state.saving.has(String(id))) return;
+
     const edit = { ...editsFor(a) };
+
     if (!a.schedEventId || !a.personId || !a.encntrId) {
+
       return notice('Cannot save: appointment identifiers are missing.', true);
+
     }
+
     if (edit.note.length > 1000) {
+
       return notice('Nurse comment must be 1000 characters or fewer.', true);
+
     }
+
     state.saving.add(String(id));
+
     updateSaveControls(id);
+
     try {
+
       const args = '^MINE^,' + [
+
         String(a.schedEventId), String(a.personId), String(a.encntrId),
+
         cclString(edit.note), cclString(edit.highlight)
+
       ].join(',');
+
       const result = await cclCall(CONFIG.notesSaveProgram, args);
+
       if (Number(result.SUCCESS ?? result.success) !== 1 ||
+
           Number(result.SCH_EVENT_ID ?? result.sch_event_id) !== a.schedEventId) {
+
         throw new Error(String(result.MESSAGE || result.message || 'Save not confirmed'));
+
       }
+
       state.saved.set(String(id), { ...edit });
+
       notice('Nurse comment and highlight saved.');
+
     } catch (error) {
+
       notice('Save failed: ' + error.message + '. Your changes are retained.', true);
+
     } finally {
+
       state.saving.delete(String(id));
+
       updateSaveControls(id);
+
       $('notesCount').textContent = visible().filter(x => editsFor(x).note.trim()).length;
+
     }
+
   }
 
   function editsFor(a) {
@@ -674,8 +779,6 @@
     return state.edits.get(k);
 
   }
-
-
 
   function visible() {
 
@@ -697,8 +800,6 @@
 
   }
 
-
-
   function allAttendingOptions() {
 
     const map = new Map();
@@ -714,8 +815,6 @@
     return [...map].sort((a, b) => a[1].localeCompare(b[1]));
 
   }
-
-
 
   function setOptions() {
 
@@ -752,8 +851,6 @@
       ).join('');
 
   }
-
-
 
   function grouped(list) {
 
@@ -805,23 +902,15 @@
 
   }
 
-
-
   // Compact appointment table
-
-
 
   function render() {
 
     closePalette();
 
-
-
     const list = visible();
 
     const groups = grouped(list);
-
-
 
     $('appointmentCount').textContent = list.length;
 
@@ -839,8 +928,6 @@
 
       ).length;
 
-
-
     $('filterSummary').textContent =
 
       displayDate(state.date) + ' · ' +
@@ -852,8 +939,6 @@
         : ($('attendingFilter').selectedOptions[0]?.textContent || '')) +
 
       ' · ' + list.length + ' appointments';
-
-
 
     if (!list.length) {
 
@@ -869,11 +954,7 @@
 
     }
 
-
-
     const showNotes = $('showNotes').checked;
-
-
 
     $('appointmentGroups').innerHTML = groups.map(g => {
 
@@ -884,8 +965,6 @@
         (s, t) => s + t.items.length, 0
 
       );
-
-
 
       return `
 
@@ -905,8 +984,6 @@
 
           </button>
 
-
-
           ${closed ? '' : `
 
             <div>
@@ -920,8 +997,6 @@
                     ${esc(t.type)} (${t.items.length})
 
                   </div>
-
-
 
                   <div class="table-scroll">
 
@@ -945,8 +1020,6 @@
 
                       </thead>
 
-
-
                       <tbody>
 
                         ${t.items.map(a => {
@@ -959,8 +1032,6 @@
 
                             a.pplanName || a.regimenName || '—';
 
-
-
                           const checkedIn =
 
                             /^checked[\s-]?in$/i.test(
@@ -969,15 +1040,11 @@
 
                             );
 
-
-
                           const statusHtml = checkedIn
 
                             ? '<span class="status-checked-in">Checked In</span>'
 
                             : esc(a.apptStatus || '');
-
-
 
                           return `
 
@@ -986,8 +1053,6 @@
                               ? 'highlight-' + edit.highlight
 
                               : ''}">
-
-
 
                               <td>
 
@@ -1004,8 +1069,6 @@
                                 </div>
 
                               </td>
-
-
 
                               <td>
 
@@ -1027,8 +1090,6 @@
 
                               </td>
 
-
-
                               <td class="regimen-cell">
 
                                 ${esc(plan)}
@@ -1041,11 +1102,7 @@
 
                               </td>
 
-
-
                               <td>${esc(a.dot || '—')}</td>
-
-
 
                               <td>
 
@@ -1069,8 +1126,6 @@
 
                                     : ''}
 
-
-
                                   <button type="button"
 
                                           class="palette-trigger ${edit.highlight
@@ -1088,22 +1143,37 @@
                                           aria-haspopup="true">&#127912;</button>
 
                                 ${!CONFIG.readOnly && showNotes ? `
+
   <button
+
     type="button"
+
     class="secondary nurse-save-button"
+
     data-save="${id}"
+
     ${!state.notesLoaded || !isDirty(a) ||
+
       state.saving.has(String(a.schedEventId))
+
         ? 'disabled' : ''}
+
   >Save</button>
 
   <span
+
     class="nurse-save-status ${isDirty(a) ? 'is-unsaved' : 'is-saved'}"
+
     data-save-status="${id}"
+
   >
+
     ${isDirty(a) ? 'Unsaved' : '✓ Saved'}
+
   </span>
-` : ''}  
+
+` : ''}
+
                                 </div>
 
                               </td>
@@ -1134,8 +1204,6 @@
 
     }).join('');
 
-
-
     $('appointmentGroups')
 
       .querySelectorAll('.compact-note')
@@ -1144,17 +1212,11 @@
 
   }
 
-
-
   // Highlight palette popup
-
-
 
   let palettePopup = null;
 
   let paletteId = null;
-
-
 
   function closePalette() {
 
@@ -1166,14 +1228,11 @@
 
   }
 
-
-
   function togglePalette(button) {
 
     if (CONFIG.readOnly) return;
+
     const id = button.dataset.palette;
-
-
 
     if (palettePopup && paletteId === id) {
 
@@ -1183,13 +1242,9 @@
 
     }
 
-
-
     closePalette();
 
     paletteId = id;
-
-
 
     const popup = document.createElement('div');
 
@@ -1198,8 +1253,6 @@
     popup.setAttribute('role', 'group');
 
     popup.setAttribute('aria-label', 'Choose highlight colour');
-
-
 
     popup.innerHTML =
 
@@ -1211,21 +1264,15 @@
 
       '<button type="button" class="palette-clear" data-pick="" title="Remove highlight" aria-label="Remove highlight">×</button>';
 
-
-
     document.body.appendChild(popup);
 
     palettePopup = popup;
-
-
 
     const rect = button.getBoundingClientRect();
 
     const width = popup.offsetWidth;
 
     const height = popup.offsetHeight;
-
-
 
     const left = Math.max(
 
@@ -1235,21 +1282,15 @@
 
     );
 
-
-
     const top = rect.bottom + height + 8 > window.innerHeight
 
       ? rect.top - height - 5
 
       : rect.bottom + 5;
 
-
-
     popup.style.left = left + 'px';
 
     popup.style.top = Math.max(8, top) + 'px';
-
-
 
     popup.addEventListener('click', function (e) {
 
@@ -1257,13 +1298,9 @@
 
       if (!swatch) return;
 
-
-
       const a = findAppointment(id);
 
       if (a) editsFor(a).highlight = swatch.dataset.pick;
-
-
 
       closePalette();
 
@@ -1273,11 +1310,7 @@
 
   }
 
-
-
   // Automatically expand notes when text wraps
-
-
 
   function sizeNote(textarea) {
 
@@ -1291,8 +1324,6 @@
 
   }
 
-
-
   function findAppointment(id) {
 
     return state.appointments.find(
@@ -1302,8 +1333,6 @@
     );
 
   }
-
-
 
   function applink(app, args) {
 
@@ -1318,8 +1347,6 @@
     return false;
 
   }
-
-
 
   function openChart(a) {
 
@@ -1365,11 +1392,7 @@
 
   }
 
-
-
   // Existing print functionality
-
-
 
   function selectedPrintList() {
 
@@ -1380,8 +1403,6 @@
       ? state.attending : value;
 
     const q = state.search.toLowerCase();
-
-
 
     return state.appointments.filter(a =>
 
@@ -1398,8 +1419,6 @@
     );
 
   }
-
-
 
   function printOptions() {
 
@@ -1421,8 +1440,6 @@
 
   }
 
-
-
   function buildPrint() {
 
     const opts = printOptions();
@@ -1433,11 +1450,7 @@
 
     const worksheet = opts.layout === 'worksheet';
 
-
-
     const printAttending = $('printAttending').value;
-
-
 
     const physicianLabel =
 
@@ -1455,15 +1468,11 @@
 
           : $('printAttending').selectedOptions[0]?.textContent;
 
-
-
     const columns = [
 
       'Time', 'Patient', 'MRN', 'Regimen / Plan', 'DoT'
 
     ];
-
-
 
     if (opts.layout === 'detailed') {
 
@@ -1471,21 +1480,15 @@
 
     }
 
-
-
     if (opts.statuses && opts.layout !== 'detailed') {
 
       columns.push('Appt status');
 
     }
 
-
-
     if (opts.notes) columns.push('Nurse comments');
 
     if (worksheet) columns.push('Handwritten notes');
-
-
 
     const widths = opts.layout === 'detailed'
 
@@ -1493,17 +1496,11 @@
 
       : [10, 21, 13, 42, 14];
 
-
-
     const extra = columns.length - widths.length;
 
     for (let i = 0; i < extra; i++) widths.push(14);
 
-
-
     const total = widths.reduce((a, b) => a + b, 0);
-
-
 
     const table = items =>
 
@@ -1541,8 +1538,6 @@
 
         ];
 
-
-
         if (opts.layout === 'detailed') {
 
           cells.push(
@@ -1553,21 +1548,15 @@
 
         }
 
-
-
         if (opts.statuses && opts.layout !== 'detailed') {
 
           cells.push(a.apptStatus || '');
 
         }
 
-
-
         if (opts.notes) cells.push(e.note);
 
         if (worksheet) cells.push('');
-
-
 
         return '<tr class="' +
 
@@ -1587,11 +1576,7 @@
 
       '</tbody></table>';
 
-
-
     let body = '';
-
-
 
     if (
 
@@ -1644,8 +1629,6 @@
       ).join('');
 
     }
-
-
 
     $('printArea').innerHTML =
 
@@ -1701,43 +1684,63 @@
 
   }
 
-
-
   // Load appointments
 
-
-
   async function load() {
+
     if (state.loading) return;
+
     const version = ++state.loadVersion;
+
     const requestedDate = state.date;
+
     state.loading = true;
+
     $('refreshButton').disabled = true;
+
     notice('Loading appointments and nurse notes...');
+
     try {
+
       const appointments = await fetchCcl(requestedDate);
+
       if (version !== state.loadVersion || requestedDate !== state.date) return;
+
       // Never replace displayed data if the notes service is unavailable.
+
       await loadNotes(appointments, version);
+
       if (version !== state.loadVersion || requestedDate !== state.date) return;
+
       state.appointments = appointments;
+
       $('lastUpdated').textContent = 'Refreshed ' +
+
         new Date().toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' });
+
       setOptions();
+
       render();
+
       notice(hasUnsaved() ? 'Unsaved changes remain. Save before closing the dashboard.' : '');
+
     } catch (error) {
+
       notice('Refresh failed: ' + error.message +
+
         '. Previous appointment data remains visible; it may be outdated.', true);
+
     } finally {
+
       state.loading = false;
+
       $('refreshButton').disabled = false;
+
     }
+
   }
 
   // Event handlers
-
-
 
   function bind() {
 
@@ -1745,20 +1748,30 @@
 
       if (!e.target.value) return;
 
-
-
               if (state.saving.size > 0) {
+
           e.target.value = state.date;
+
           notice('Please wait for the current save to finish.', true);
+
           return;
+
         }
+
         if (hasUnsaved() && !window.confirm('Unsaved nurse comments will be lost if you change the date. Continue?')) {
+
           e.target.value = state.date;
+
           return;
+
         }
+
         state.date = e.target.value;
+
         state.edits.clear();
+
         state.saved.clear();
+
         state.notesLoaded = false;
 
       state.appointments = [];
@@ -1767,15 +1780,11 @@
 
       state.collapsed.clear();
 
-
-
       render();
 
       load();
 
     });
-
-
 
     $('attendingFilter').addEventListener('change', e => {
 
@@ -1785,8 +1794,6 @@
 
     });
 
-
-
     $('searchBox').addEventListener('input', e => {
 
       state.search = e.target.value.trim();
@@ -1795,13 +1802,9 @@
 
     });
 
-
-
     $('showNotes').addEventListener('change', render);
 
     $('refreshButton').addEventListener('click', load);
-
-
 
     $('expandAll').addEventListener('click', () => {
 
@@ -1810,8 +1813,6 @@
       render();
 
     });
-
-
 
     $('collapseAll').addEventListener('click', () => {
 
@@ -1825,13 +1826,9 @@
 
     });
 
-
-
     $('appointmentGroups').addEventListener('click', e => {
 
       const toggle = e.target.closest('[data-toggle]');
-
-
 
       if (toggle) {
 
@@ -1849,11 +1846,7 @@
 
       }
 
-
-
       const chart = e.target.closest('[data-chart]');
-
-
 
       if (chart) {
 
@@ -1863,17 +1856,17 @@
 
       }
 
-
-
       const save = e.target.closest('[data-save]');
+
       if (save) {
+
         saveNote(save.dataset.save);
+
         return;
+
       }
 
       const palette = e.target.closest('[data-palette]');
-
-
 
       if (palette) {
 
@@ -1885,24 +1878,19 @@
 
     });
 
-
-
     $('appointmentGroups').addEventListener('input', e => {
 
       if (e.target.matches('[data-note]')) {
 
         const a = findAppointment(e.target.dataset.note);
 
-
-
         if (a) {
 
           editsFor(a).note = e.target.value;
 
           sizeNote(e.target);
+
             updateSaveControls(a.schedEventId);
-
-
 
           $('notesCount').textContent =
 
@@ -1917,8 +1905,6 @@
       }
 
     });
-
-
 
     document.addEventListener('click', e => {
 
@@ -1938,15 +1924,11 @@
 
     });
 
-
-
     document.addEventListener('keydown', e => {
 
       if (e.key === 'Escape') closePalette();
 
     });
-
-
 
     $('appointmentGroups').addEventListener(
 
@@ -1954,11 +1936,7 @@
 
     );
 
-
-
     const dialog = $('printDialog');
-
-
 
     $('printOptionsButton').addEventListener(
 
@@ -1966,15 +1944,11 @@
 
     );
 
-
-
     $('closePrint').addEventListener(
 
       'click', () => dialog.close()
 
     );
-
-
 
     $('cancelPrint').addEventListener(
 
@@ -1982,25 +1956,15 @@
 
     );
 
-
-
-
-
 $('previewPrint').addEventListener('click', () => {
 
   buildPrint();
-
-
 
   // Add Close Preview button above the printed report
 
   const printArea = $('printArea');
 
-
-
   let closeButton = document.getElementById('closePrintPreview');
-
-
 
   if (!closeButton) {
 
@@ -2014,11 +1978,7 @@ $('previewPrint').addEventListener('click', () => {
 
     closeButton.textContent = '✕ Close Preview';
 
-
-
     printArea.insertBefore(closeButton, printArea.firstChild);
-
-
 
     closeButton.addEventListener('click', () => {
 
@@ -2030,21 +1990,13 @@ $('previewPrint').addEventListener('click', () => {
 
   }
 
-
-
   document.body.classList.add('print-preview-visible');
 
   dialog.close();
 
-
-
   printArea.scrollIntoView({ behavior: 'smooth' });
 
 });
-
-
-
-
 
     $('doPrint').addEventListener('click', () => {
 
@@ -2056,8 +2008,6 @@ $('previewPrint').addEventListener('click', () => {
 
     });
 
-
-
     $('printForm').addEventListener(
 
       'submit', e => e.preventDefault()
@@ -2066,35 +2016,29 @@ $('previewPrint').addEventListener('click', () => {
 
   }
 
-
-
   state.date = todayLocal();
 
   $('appointmentDate').value = state.date;
-
-
 
   bind();
 
   load();
 
-
-
   window.addEventListener('beforeunload', e => {
+
     if (!hasUnsaved()) return;
+
     e.preventDefault();
+
     e.returnValue = '';
+
   });
 
   // Auto-refresh every 3 minutes
 
-
-
   setInterval(() => {
 
     const active = document.activeElement;
-
-
 
     const editing = active && (
 
@@ -2104,11 +2048,10 @@ $('previewPrint').addEventListener('click', () => {
 
     );
 
-
-
     if (
 
       state.loading ||
+
       state.saving.size > 0 ||
 
       editing ||
@@ -2123,12 +2066,8 @@ $('previewPrint').addEventListener('click', () => {
 
     }
 
-
-
     load();
 
   }, CONFIG.autoRefreshMs);
 
-
-
-})();
+}());
