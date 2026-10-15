@@ -108,7 +108,71 @@
   </div>
 
 </dialog>
-  
+ 
+
+<!-- Recent Blood Results Popup -->
+<dialog id="bloodResultsDialog"
+        class="blood-results-dialog no-print">
+
+  <div class="dialog-heading">
+    <div>
+      <h2>🧪 Recent Blood Results</h2>
+      <p class="muted">
+        Verified numeric results from the past 72 hours
+      </p>
+    </div>
+
+    <button id="closeBloodResults"
+            type="button"
+            class="icon-button"
+            aria-label="Close">
+      ×
+    </button>
+  </div>
+
+  <div class="blood-results-patient">
+    <strong id="bloodPatientName"></strong>
+    <span id="bloodPatientMRN" class="muted"></span>
+  </div>
+
+  <div id="bloodResultsNotice"
+       class="muted"
+       role="status"
+       aria-live="polite"></div>
+
+  <div class="blood-results-scroll">
+    <table class="blood-results-table">
+      <thead>
+        <tr>
+          <th>Test</th>
+          <th>Result</th>
+          <th>Units</th>
+          <th>Verified</th>
+        </tr>
+      </thead>
+
+      <tbody id="bloodResultsBody"></tbody>
+    </table>
+  </div>
+
+  <div class="dialog-actions">
+    <button id="refreshBloodResults"
+            type="button"
+            class="secondary">
+      ↻ Refresh
+    </button>
+
+    <button id="doneBloodResults"
+            type="button"
+            class="primary">
+      Close
+    </button>
+  </div>
+
+</dialog>
+
+
+
   <script src="script.js"></script>
 
 
