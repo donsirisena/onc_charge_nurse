@@ -1208,20 +1208,17 @@
 
       actions.appendChild(printButton);
       actions.appendChild(closeButton);
-      // Keep the preview heading and both buttons on the same horizontal line.
-      const sheet = printArea.querySelector('.print-sheet');
-      const heading = sheet && sheet.querySelector('h1');
-      if (heading) {
-        const header = document.createElement('div');
-        header.className = 'print-preview-header';
-        header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px;';
-        heading.style.cssText = 'margin:0;flex:1;min-width:0;';
-        heading.parentNode.insertBefore(header, heading);
-        header.appendChild(heading);
-        header.appendChild(actions);
-      } else {
-        printArea.insertBefore(actions, printArea.firstChild);
-      }
+      // Preview controls live outside the printable report, so report
+      // heading and metadata cannot affect their alignment.
+      const toolbar = document.createElement('div');
+      toolbar.className = 'no-print print-preview-toolbar';
+      toolbar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:nowrap;position:sticky;top:0;z-index:20;background:#e6f0fa;border-bottom:1px solid #cbd6e3;padding:10px 12px;margin:-25px -25px 18px;';
+      const label = document.createElement('strong');
+      label.textContent = 'Print Preview';
+      label.style.cssText = 'font-size:14px;color:#1d3d5c;white-space:nowrap;';
+      toolbar.appendChild(label);
+      toolbar.appendChild(actions);
+      printArea.insertBefore(toolbar, printArea.firstChild);
       document.body.classList.add('print-preview-visible');
       dialog.close();
       printArea.scrollIntoView({ behavior: 'smooth' });
