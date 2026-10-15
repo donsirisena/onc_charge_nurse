@@ -337,15 +337,17 @@
       const busy = state.pendingClearing.has(String(r.schedEventId));
       return `<article class="pending-comment-item">
         <div class="pending-comment-heading">
-          <strong>${esc(r.ptName || 'Patient')}</strong>
-          <span class="muted">${esc(r.apptDate)}</span>
+          <div class="pending-comment-identity">
+            <strong>${esc(r.ptName || 'Patient')}</strong>
+            <span class="pending-comment-meta">MRN: ${esc(r.mrn)} · ${esc(r.status)}</span>
+          </div>
+          <span class="pending-comment-date">${esc(r.apptDate)}</span>
+          <div class="pending-comment-actions">
+            <button type="button" class="secondary" data-pending-chart="${id}">Open Chart</button>
+            ${CONFIG.readOnly ? '' : `<button type="button" class="secondary" data-pending-clear="${id}" ${busy ? 'disabled' : ''}>${busy ? 'Clearing…' : 'Clear Comment'}</button>`}
+          </div>
         </div>
-        <div class="pending-comment-meta">MRN: ${esc(r.mrn)} · ${esc(r.status)}</div>
         <p class="pending-comment-text">${esc(r.note)}</p>
-        <div class="pending-comment-actions">
-          <button type="button" class="secondary" data-pending-chart="${id}">Open Chart</button>
-          ${CONFIG.readOnly ? '' : `<button type="button" class="secondary" data-pending-clear="${id}" ${busy ? 'disabled' : ''}>${busy ? 'Clearing…' : 'Clear Comment'}</button>`}
-        </div>
       </article>`;
     }).join('');
   }
