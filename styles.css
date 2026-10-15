@@ -443,3 +443,20 @@
   .pending-comment-actions { margin-left: 0; }
   .pending-comment-date { margin-left: auto; }
 }
+/* Fix Print Preview button alignment */
+.print-preview-actions {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.print-preview-actions button {
+    margin: 0 !important;
+    height: 36px;
+    padding: 8px 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+}
