@@ -1187,7 +1187,7 @@
       const printArea = $('printArea');
       const actions = document.createElement('div');
       actions.className = 'no-print print-preview-actions';
-      actions.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:flex-end;margin:0 0 12px 0;';
+      actions.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-shrink:0;';
 
       const printButton = document.createElement('button');
       printButton.id = 'printFromPreview';
@@ -1208,7 +1208,20 @@
 
       actions.appendChild(printButton);
       actions.appendChild(closeButton);
-      printArea.insertBefore(actions, printArea.firstChild);
+      // Keep the preview heading and both buttons on the same horizontal line.
+      const sheet = printArea.querySelector('.print-sheet');
+      const heading = sheet && sheet.querySelector('h1');
+      if (heading) {
+        const header = document.createElement('div');
+        header.className = 'print-preview-header';
+        header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px;';
+        heading.style.cssText = 'margin:0;flex:1;min-width:0;';
+        heading.parentNode.insertBefore(header, heading);
+        header.appendChild(heading);
+        header.appendChild(actions);
+      } else {
+        printArea.insertBefore(actions, printArea.firstChild);
+      }
       document.body.classList.add('print-preview-visible');
       dialog.close();
       printArea.scrollIntoView({ behavior: 'smooth' });
