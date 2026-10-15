@@ -165,3 +165,67 @@
 .report-action-buttons button:hover {
     background: #0c4279;
 }
+
+/* Nurse comments and Save controls */
+
+.nurse-note-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+    min-width: 0;
+}
+
+.nurse-note-row .note-input {
+    flex: 1 1 auto;
+    min-width: 100px;
+}
+
+.nurse-note-row .palette-trigger {
+    flex: 0 0 28px;
+}
+
+.nurse-save-button {
+    flex: 0 0 auto;
+    width: 52px;
+    min-width: 52px;
+    height: 30px;
+    padding: 4px 8px !important;
+    border-radius: 5px;
+    background: #1769aa;
+    color: #ffffff;
+    border: 1px solid #1769aa;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.nurse-save-button:hover:not(:disabled) {
+    background: #10558d;
+    color: #ffffff;
+}
+
+.nurse-save-button:disabled {
+    background: #e8edf2;
+    border-color: #d4dde6;
+    color: #8b98a6;
+    cursor: default;
+}
+
+.nurse-save-status {
+    flex: 0 0 55px;
+    width: 55px;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+    color: #64748b;
+}
+
+.nurse-save-status.is-saved {
+    color: #16803c;
+}
+
+.nurse-save-status.is-unsaved {
+    color: #b45309;
+}
