@@ -287,10 +287,30 @@
   async function loadBloodSummary(appointments, version) {
     const patients = new Set();
     try {
-      // The summary CCL currently returns REPLY.PATIENTS.
-      const root = await cclCall(CONFIG.bloodSummaryProgram, '^MINE^');
-      const rows = root.PATIENTS || root.patients || [];
-      if (!Array.isArray(rows)) throw new Error('Unexpected blood summary reply');
+      // Pass distinct patient:encounter pairs required by the summary CCL.
+      const pairs = [...new Set(appointments
+        .filter(a => Number.isSafeInteger(a.personId) && a.personId > 0 &&
+                     Number.isSafeInteger(a.encntrId) && a.encntrId > 0)
+        .map(a => a.personId + ':' + a.encntrId))];
+      if (!pairs.length) {
+        if (version === state.loadVersion) {
+          state.bloodPatients = new Set();
+          state.bloodSummaryAvailable = true;
+          render();
+        }
+        return;
+      }
+      const responses = [];
+      for (let i = 0; i < pairs.length; i += 200) {
+        const root = await cclCall(CONFIG.bloodSummaryProgram,
+          '^MINE^,' + cclString(pairs.slice(i, i + 200).join(',')));
+        responses.push(root);
+      }
+      const rows = responses.flatMap(root => {
+        const list = root.PATIENTS || root.patients || [];
+        if (!Array.isArray(list)) throw new Error('Unexpected blood summary reply');
+        return list;
+      });
       rows.forEach(r => {
         const person = Number(r.PERSON_ID ?? r.person_id ?? 0);
         const encounter = Number(r.ENCNTR_ID ?? r.encntr_id ?? 0);
