@@ -1,7 +1,6 @@
 /* Oncology Charge Nurse Dashboard
  * Compact layout: Patient/MRN combined, expandable notes,
- * single highlight palette. Notes are persisted in the
-* CUST_ONC_NURSE_NOTES_V2 database table via CCL.
+ * single highlight palette. Notes remain SESSION ONLY.
  */
 (function () {
   'use strict';
@@ -9,10 +8,11 @@
     cclProgram: 'mrd_onc_charge_nurse_mpage:group1',
     notesGetProgram: 'mrd_onc_nurse_notes_get:group1',
     notesSaveProgram: 'mrd_onc_nurse_notes_save:group1',
+    accessProgram: 'mrd_onc_charge_nurse_access:group1',
     pendingProgram: 'mrd_onc_nurse_notes_pending:group1',
     bloodSummaryProgram: 'mrd_onc_charge_nurse_bloodwork:group1',
     bloodDetailProgram: 'mrd_onc_charge_nurse_lab_detai:group1',
-    readOnly: false,
+    readOnly: true, // Fail closed until CCL confirms editing access.
     autoRefreshMs: 180000,
     cclDateFormat: 'MM/DD/YYYY',
     forceDemo: false,
@@ -26,6 +26,8 @@
   const $ = id => document.getElementById(id);
   const state = {
     appointments: [],
+    accessLevel: 'READ_ONLY',
+    accessChecked: false,
     attending: 'all',
     search: '',
     date: '',
@@ -284,6 +286,60 @@
       } catch (error) { reject(error); }
     });
   }
+  // The UI is read-only until the Cerner authorization CCL succeeds.
+  // The Save CCL independently enforces authorization on the server.
+  function showAccessStatus() {
+    let badge = $('chargeNurseAccessStatus');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.id = 'chargeNurseAccessStatus';
+      badge.setAttribute('role', 'status');
+      badge.style.cssText = 'display:inline-block;margin-left:10px;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap;';
+      const anchor = $('lastUpdated');
+      if (anchor && anchor.parentNode) anchor.parentNode.appendChild(badge);
+      else document.body.insertBefore(badge, document.body.firstChild);
+    }
+    const allowed = !CONFIG.readOnly;
+    badge.textContent = !state.accessChecked ? 'Checking access…' :
+      allowed ? (state.accessLevel === 'ADMIN' ? 'CI Admin · Edit' : 'Charge Nurse · Edit') : 'Read-only';
+    badge.style.background = allowed ? '#e4f4e8' : '#eef1f5';
+    badge.style.color = allowed ? '#176335' : '#526273';
+    badge.title = allowed ? 'Authorized to edit nurse comments and highlights' :
+      'Nurse comments and highlights are view-only';
+  }
+
+  async function loadAccess() {
+    // Never trust a previous session or a failed access lookup.
+    CONFIG.readOnly = true;
+    state.accessLevel = 'READ_ONLY';
+    state.accessChecked = false;
+    closePalette();
+    showAccessStatus();
+    renderPending();
+    try {
+      const root = await cclCall(CONFIG.accessProgram, '^MINE^');
+      const canEdit = Number(root.CAN_EDIT ?? root.can_edit ?? 0) === 1;
+      const isAdmin = Number(root.IS_ADMIN ?? root.is_admin ?? 0) === 1;
+      const level = String(root.ACCESS_LEVEL ?? root.access_level ?? 'READ_ONLY').toUpperCase();
+      CONFIG.readOnly = !canEdit;
+      state.accessLevel = canEdit ? (isAdmin && level === 'ADMIN' ? 'ADMIN' : 'EDITOR') : 'READ_ONLY';
+    } catch (error) {
+      CONFIG.readOnly = true;
+      state.accessLevel = 'READ_ONLY';
+      // Do not grant access when CCL is unavailable or returns malformed JSON.
+      notice('Access verification unavailable. Dashboard is read-only.', true);
+    } finally {
+      state.accessChecked = true;
+      if (CONFIG.readOnly) {
+        // Remove any local edits when authorization is absent.
+        state.edits = new Map([...state.saved].map(([id, note]) => [id, { ...note }]));
+      }
+      showAccessStatus();
+      renderPending();
+      if (state.date) render();
+    }
+  }
+
   // Blood results are fetched on demand; no results are stored in notes.
   async function loadBloodSummary(appointments, version) {
     const patients = new Set();
@@ -807,16 +863,17 @@
                                         rows="1"
                                         placeholder="Add nurse comment..."
                                         aria-label="Nurse comment for ${esc(a.ptName)}"
+                                        ${CONFIG.readOnly || !state.notesLoaded ? 'readonly' : ''}
                                       >${esc(edit.note)}</textarea>`
                                     : ''}
-                                  <button type="button"
+                                  ${!CONFIG.readOnly ? `<button type="button"
                                           class="palette-trigger ${edit.highlight
                                             ? 'has-highlight palette-' + edit.highlight
                                             : ''}"
                                           data-palette="${id}"
                                           title="Choose row highlight"
                                           aria-label="Choose row highlight for ${esc(a.ptName)}"
-                                          aria-haspopup="true">&#127912;</button>
+                                          aria-haspopup="true">&#127912;</button>` : ''}
                                 ${!CONFIG.readOnly && showNotes ? `
   <button
     type="button"
@@ -1261,7 +1318,7 @@
       }
     });
     $('appointmentGroups').addEventListener('input', e => {
-      if (e.target.matches('[data-note]')) {
+      if (!CONFIG.readOnly && state.notesLoaded && e.target.matches('[data-note]')) {
         const a = findAppointment(e.target.dataset.note);
         if (a) {
           editsFor(a).note = e.target.value;
@@ -1352,8 +1409,12 @@
   state.date = todayLocal();
   $('appointmentDate').value = state.date;
   bind();
-  load();
-  loadPending();
+  showAccessStatus();
+  // Access must be checked before editable controls are ever displayed.
+  loadAccess().then(() => {
+    load();
+    loadPending();
+  });
   window.addEventListener('beforeunload', e => {
     if (!hasUnsaved()) return;
     e.preventDefault();
@@ -1369,7 +1430,6 @@
     if (
       state.loading ||
       state.saving.size > 0 ||
-      hasUnsaved() ||
       editing ||
       document.hidden ||
       $('printDialog').open ||
