@@ -1,6 +1,7 @@
 /* Oncology Charge Nurse Dashboard
  * Compact layout: Patient/MRN combined, expandable notes,
- * single highlight palette. Notes remain SESSION ONLY.
+ * single highlight palette. Notes are persisted in the
+* CUST_ONC_NURSE_NOTES_V2 database table via CCL.
  */
 (function () {
   'use strict';
@@ -521,10 +522,14 @@
     state.pendingClearing.add(String(id));
     renderPending();
     try {
-      const args = '^MINE^,' + [
-        String(r.schedEventId), String(r.personId), String(r.encntrId),
-        cclString(''), cclString(r.highlight)
-      ].join(',');
+    const args = '^MINE^,' + [
+    String(r.schedEventId),
+    String(r.personId),
+    String(r.encntrId),
+    cclString(''),
+    cclString(r.highlight),
+    cclString('CLEAR')
+    ].join(',');
       const result = await cclCall(CONFIG.notesSaveProgram, args);
       if (Number(result.SUCCESS ?? result.success) !== 1 ||
           Number(result.SCH_EVENT_ID ?? result.sch_event_id) !== r.schedEventId) {
@@ -532,14 +537,14 @@
       }
       // The server confirmed the save; update matching on-screen appointment.
       if (current && current.personId === r.personId && current.encntrId === r.encntrId) {
-        const saved = { note: '', highlight: r.highlight };
+        const saved = { note: '', highlight: '' };
         state.saved.set(String(id), saved);
         state.edits.set(String(id), { ...saved });
         render();
       }
       state.pending = state.pending.filter(item => String(item.schedEventId) !== String(id));
       $('pendingCount').textContent = String(state.pending.length);
-      notice('Pending comment cleared. Highlight preserved.');
+      notice('Pending comment resolved and archived.');
       // Re-query to reconcile with the database, not just the local popup.
       await loadPending();
     } catch (error) {
@@ -662,10 +667,14 @@
     state.saving.add(String(id));
     updateSaveControls(id);
     try {
-      const args = '^MINE^,' + [
-        String(a.schedEventId), String(a.personId), String(a.encntrId),
-        cclString(edit.note), cclString(edit.highlight)
-      ].join(',');
+    const args = '^MINE^,' + [
+    String(a.schedEventId),
+    String(a.personId),
+    String(a.encntrId),
+    cclString(edit.note),
+    cclString(edit.highlight),
+    cclString('SAVE')
+    ].join(',');
       const result = await cclCall(CONFIG.notesSaveProgram, args);
       if (Number(result.SUCCESS ?? result.success) !== 1 ||
           Number(result.SCH_EVENT_ID ?? result.sch_event_id) !== a.schedEventId) {
@@ -1430,6 +1439,7 @@
     if (
       state.loading ||
       state.saving.size > 0 ||
+      hasUnsaved() ||
       editing ||
       document.hidden ||
       $('printDialog').open ||
