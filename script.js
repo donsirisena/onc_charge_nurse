@@ -518,7 +518,10 @@
       window.alert('This appointment has unsaved changes on the dashboard. Save or discard those changes before clearing its pending comment.');
       return;
     }
-    if (!window.confirm('Clear the pending comment for ' + r.ptName + '? This keeps the existing row highlight.')) return;
+    if (!window.confirm(
+  'Clear and archive the pending comment for ' + r.ptName +
+  '? The comment and highlight will be removed from the active dashboard.'
+    )) return;
     state.pendingClearing.add(String(id));
     renderPending();
     try {
@@ -1048,19 +1051,24 @@
     }
   }
   // Existing print functionality
-  function selectedPrintList() {
-    const value = $('printAttending').value;
-    const key = value === 'current'
-      ? state.attending : value;
-    const q = state.search.toLowerCase();
-    return state.appointments.filter(a =>
-      (key === 'all' ||
-       String(a.attendingPersonId || a.attending) === key) &&
-      (!q ||
-       a.ptName.toLowerCase().includes(q) ||
-       a.mrn.toLowerCase().includes(q))
-    );
-  }
+  
+function selectedPrintList() {
+  const value = $('printAttending').value;
+  const key = value === 'current'
+    ? state.attending : value;
+  const q = state.search.toLowerCase();
+  const commentsOnly = $('printOnlyWithComments').checked;
+
+  return state.appointments.filter(a =>
+    (key === 'all' ||
+      String(a.attendingPersonId || a.attending) === key) &&
+    (!q ||
+      a.ptName.toLowerCase().includes(q) ||
+      a.mrn.toLowerCase().includes(q)) &&
+    (!commentsOnly || Boolean(savedFor(a).note.trim()))
+  );
+}
+
   function printOptions() {
     return {
       layout: document.querySelector(
