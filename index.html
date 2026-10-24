@@ -1,7 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
-
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Type" content="XMLCCLREQUEST,APPLINK,MPAGES_EVENT,CCLLINK" name="discern">
@@ -9,8 +7,6 @@
   <title>Oncology Charge Nurse Dashboard</title>
   <link rel="stylesheet" href="styles.css">
 </head>
-
-
 <body>
   <header class="page-header no-print">
     <div><h1>Oncology Charge Nurse Dashboard</h1><p>Oncology Clinic · Daily appointments</p></div>
@@ -22,28 +18,10 @@
       <div class="field"><label for="attendingFilter">Attending physician</label><select id="attendingFilter"><option value="all">All Attendings</option></select></div>
       <div class="field search-field"><label for="searchBox">Search patient / MRN</label><input id="searchBox" type="search" placeholder="Search patient or MRN..."></div>
       <div class="toolbar-actions">
-          <button id="refreshButton" type="button" class="secondary">
-            ↻ Refresh
-          </button>
-          
-          <button id="pendingCommentsButton"
-          type="button"
-          class="secondary">
-           📝 Pending Comments (<span id="pendingCount">0</span>)
-           </button>
-          
-          <button
-            id="runOriginalReport"
-            type="button"
-            class="primary"
-            onclick="CCLLINK('mrd_onc_nursing_schedule', '', 0)"
-        >
-           ▣ Run DRP Report
-          </button>
-
-          <button id="printOptionsButton" type="button" class="primary">
-          ▣ Print Options
-          </button>
+        <button id="refreshButton" type="button" class="secondary">↻ Refresh</button>
+        <button id="pendingCommentsButton" type="button" class="secondary">📝 Pending Comments (<span id="pendingCount">0</span>)</button>
+        <button id="runOriginalReport" type="button" class="primary" onclick="CCLLINK('mrd_onc_nursing_schedule', '', 0)">▣ Run DRP Report</button>
+        <button id="printOptionsButton" type="button" class="primary">▣ Print Options</button>
       </div>
     </section>
     <section class="stats no-print" aria-label="Summary">
@@ -67,114 +45,27 @@
         <label><input type="radio" name="printLayout" value="worksheet"> Nurse Worksheet (writing space)</label>
       </fieldset>
       <div class="field"><label for="printAttending">Attending to print</label><select id="printAttending"><option value="current">Use dashboard selection</option><option value="all">All Attendings</option></select></div>
+      <label class="check"><input type="checkbox" id="printOnlyWithComments"> Only patients with nurse comments</label>
       <label class="check"><input type="checkbox" id="printNotes"> Include nurse comments</label>
       <label class="check"><input type="checkbox" id="printHighlights" checked> Include row highlighting</label>
       <label class="check"><input type="checkbox" id="printStatuses"> Include appointment status</label>
       <div class="dialog-actions"><button type="button" id="cancelPrint" class="secondary">Cancel</button><button type="button" id="previewPrint" class="secondary">Preview on page</button><button type="button" id="doPrint" class="primary">Print</button></div>
     </form>
   </dialog>
-  <dialog id="pendingCommentsDialog"
-        class="pending-comments-dialog no-print">
-
-  <div class="dialog-heading">
-    <h2>Pending Nurse Comments — Last 30 Days</h2>
-
-    <button id="closePendingComments"
-            type="button"
-            class="icon-button"
-            aria-label="Close">
-      ×
-    </button>
-  </div>
-
-  <p class="muted">
-    Comments from previous appointments that still need follow-up.
-  </p>
-
-  <div id="pendingCommentsList"></div>
-
-  <div class="dialog-actions">
-    <button id="refreshPendingComments"
-            type="button"
-            class="secondary">
-      ↻ Refresh
-    </button>
-
-    <button id="donePendingComments"
-            type="button"
-            class="primary">
-      Close
-    </button>
-  </div>
-
-</dialog>
- 
-
-<!-- Recent Blood Results Popup -->
-<dialog id="bloodResultsDialog"
-        class="blood-results-dialog no-print">
-
-  <div class="dialog-heading">
-    <div>
-      <h2>🧪 Recent Blood Results</h2>
-      <p class="muted">
-        Verified numeric results from the past 72 hours
-      </p>
-    </div>
-
-    <button id="closeBloodResults"
-            type="button"
-            class="icon-button"
-            aria-label="Close">
-      ×
-    </button>
-  </div>
-
-  <div class="blood-results-patient">
-    <strong id="bloodPatientName"></strong>
-    <span id="bloodPatientMRN" class="muted"></span>
-  </div>
-
-  <div id="bloodResultsNotice"
-       class="muted"
-       role="status"
-       aria-live="polite"></div>
-
-  <div class="blood-results-scroll">
-    <table class="blood-results-table">
-      <thead>
-        <tr>
-          <th>Test</th>
-          <th>Result</th>
-          <th>Units</th>
-          <th>Verified</th>
-        </tr>
-      </thead>
-
-      <tbody id="bloodResultsBody"></tbody>
-    </table>
-  </div>
-
-  <div class="dialog-actions">
-    <button id="refreshBloodResults"
-            type="button"
-            class="secondary">
-      ↻ Refresh
-    </button>
-
-    <button id="doneBloodResults"
-            type="button"
-            class="primary">
-      Close
-    </button>
-  </div>
-
-</dialog>
-
-
-
+  <dialog id="pendingCommentsDialog" class="pending-comments-dialog no-print">
+    <div class="dialog-heading"><h2>Pending Nurse Comments — Last 30 Days</h2><button id="closePendingComments" type="button" class="icon-button" aria-label="Close">×</button></div>
+    <p class="muted">Comments from previous appointments that still need follow-up.</p>
+    <div id="pendingCommentsList"></div>
+    <div class="dialog-actions"><button id="refreshPendingComments" type="button" class="secondary">↻ Refresh</button><button id="donePendingComments" type="button" class="primary">Close</button></div>
+  </dialog>
+  <!-- Recent Blood Results Popup -->
+  <dialog id="bloodResultsDialog" class="blood-results-dialog no-print">
+    <div class="dialog-heading"><div><h2>🧪 Recent Blood Results</h2><p class="muted">Verified numeric results from the past 72 hours</p></div><button id="closeBloodResults" type="button" class="icon-button" aria-label="Close">×</button></div>
+    <div class="blood-results-patient"><strong id="bloodPatientName"></strong><span id="bloodPatientMRN" class="muted"></span></div>
+    <div id="bloodResultsNotice" class="muted" role="status" aria-live="polite"></div>
+    <div class="blood-results-scroll"><table class="blood-results-table"><thead><tr><th>Test</th><th>Result</th><th>Units</th><th>Verified</th></tr></thead><tbody id="bloodResultsBody"></tbody></table></div>
+    <div class="dialog-actions"><button id="refreshBloodResults" type="button" class="secondary">↻ Refresh</button><button id="doneBloodResults" type="button" class="primary">Close</button></div>
+  </dialog>
   <script src="script.js"></script>
-
-
 </body>
 </html>
