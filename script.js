@@ -13,6 +13,7 @@
     pendingProgram: 'mrd_onc_nurse_notes_pending:group1',
     bloodSummaryProgram: 'mrd_onc_charge_nurse_bloodwork:group1',
     bloodDetailProgram: 'mrd_onc_charge_nurse_lab_detai:group1',
+    nurseReportProgram: 'mrd_onc_nurse_comment_mpage:group1',
     readOnly: true, // Fail closed until CCL confirms editing access.
     autoRefreshMs: 180000,
     cclDateFormat: 'MM/DD/YYYY',
@@ -50,7 +51,11 @@
     bloodPatients: new Set(),
     bloodSummaryAvailable: false,
     bloodPatient: null,
-    bloodRequestVersion: 0
+    bloodRequestVersion: 0,
+    nurseReportRows: [],
+    nurseReportLoadedDate: '',
+    nurseReportVersion: 0,
+    nurseReportLoading: false
   };
   const excludedTypes = new Set([
     'Chemo Clinic Lab Visit',
@@ -612,7 +617,7 @@ attendingPersonId: Number(
 
                   </div>
 
-                <p class="pending-comment-text">${esc(r.note)}</p>
+                 <p class="pending-comment-text">${esc(r.note)}</p>
                 </article>
               `;
             }).join('')}
@@ -1315,6 +1320,135 @@ function selectedPrintList() {
       'Handle as confidential patient information' +
       '</div></div>';
   }
+ 
+  
+  /* Printable Nurse Comments Report */
+
+  function tomorrowLocal() {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return [
+      d.getFullYear(),
+      String(d.getMonth() + 1).padStart(2, '0'),
+      String(d.getDate()).padStart(2, '0')
+    ].join('-');
+  }
+
+  function nurseReportTable(rows) {
+    const columns = [
+      ['PT_NAME', 'Patient Name'],
+      ['MRN', 'MRN'],
+      ['REGIMEN', 'Regimen'],
+      ['APPT_DATE', 'Appt Date'],
+      ['APPT_TM', 'Time'],
+      ['RESOURCE', 'Resource'],
+      ['NURSING_NOTE', 'Nursing Note']
+    ];
+
+    return '<table class="nurse-report-table">' +
+      '<colgroup>' +
+      [18, 7, 23, 9, 5, 18, 20].map(w =>
+        '<col style="width:' + w + '%">'
+      ).join('') +
+      '</colgroup>' +
+      '<thead><tr>' +
+      columns.map(([, label]) =>
+        '<th>' + esc(label) + '</th>'
+      ).join('') +
+      '</tr></thead><tbody>' +
+      rows.map(r =>
+        '<tr>' +
+        columns.map(([key]) =>
+          '<td>' + esc(r[key] ?? r[key.toLowerCase()] ?? '') + '</td>'
+        ).join('') +
+        '</tr>'
+      ).join('') +
+      '</tbody></table>';
+  }
+
+  async function loadNurseReport() {
+    const date = $('nurseReportDate').value;
+    if (!date) return;
+
+    const version = ++state.nurseReportVersion;
+    state.nurseReportLoading = true;
+    state.nurseReportRows = [];
+    state.nurseReportLoadedDate = '';
+
+    $('nurseReportBody').innerHTML = '';
+    $('nurseReportStatus').textContent = 'Loading nurse comments…';
+    $('printNurseCommentsReport').disabled = true;
+    $('loadNurseCommentsReport').disabled = true;
+
+    try {
+      const root = await cclCall(
+        CONFIG.nurseReportProgram,
+        '^MINE^,' + cclString(formatPromptDate(date))
+      );
+
+      if (version !== state.nurseReportVersion) return;
+
+      const rows = root.COMMENTS || root.comments || [];
+      if (!Array.isArray(rows)) {
+        throw new Error('Unexpected nurse comments report response');
+      }
+
+      state.nurseReportRows = rows;
+      state.nurseReportLoadedDate = date;
+
+      const html = nurseReportTable(rows);
+      const temp = document.createElement('div');
+      temp.innerHTML = html;
+
+      $('nurseReportBody').innerHTML =
+        temp.querySelector('tbody').innerHTML;
+
+      $('nurseReportStatus').textContent = rows.length
+        ? rows.length + ' nurse comments for ' + displayDate(date)
+        : 'No nurse comments found for ' + displayDate(date);
+
+      $('printNurseCommentsReport').disabled = !rows.length;
+
+    } catch (error) {
+      if (version !== state.nurseReportVersion) return;
+      $('nurseReportStatus').textContent =
+        'Unable to load nurse comments: ' + error.message;
+    } finally {
+      if (version === state.nurseReportVersion) {
+        state.nurseReportLoading = false;
+        $('loadNurseCommentsReport').disabled = false;
+      }
+    }
+  }
+
+  function printNurseReport() {
+    const date = $('nurseReportDate').value;
+
+    if (state.nurseReportLoading ||
+        !state.nurseReportRows.length ||
+        date !== state.nurseReportLoadedDate) {
+      window.alert('Please load the selected appointment date before printing.');
+      return;
+    }
+
+    $('nurseReportPrintArea').innerHTML =
+      '<div class="nurse-report-print-sheet">' +
+      '<h1>Oncology — Nurse Comments Report</h1>' +
+      '<p>Appointment Date: ' + esc(displayDate(date)) + '</p>' +
+      nurseReportTable(state.nurseReportRows) +
+      '</div>';
+
+    // Keep the existing dashboard print layout separate.
+    document.body.classList.add('printing-nurse-report');
+
+    $('nurseCommentsReportDialog').close();
+
+    window.print();
+
+    // Do not clear the print area here: some embedded browsers
+    // return from window.print() before printing finishes.
+  }
+
   // Load appointments
   async function load() {
     if (state.loading) return;
@@ -1409,6 +1543,46 @@ function selectedPrintList() {
       const clear = e.target.closest('[data-pending-clear]');
       if (clear) clearPending(clear.dataset.pendingClear);
     });
+    
+    
+    // Nurse Comments Report controls
+    $('nurseCommentsReportButton').addEventListener('click', () => {
+      const date = tomorrowLocal();
+      $('nurseReportDate').value = date;
+
+      const dialog = $('nurseCommentsReportDialog');
+      if (!dialog.open) dialog.showModal();
+
+      loadNurseReport();
+    });
+
+    $('nurseReportDate').addEventListener('change', () => {
+      ++state.nurseReportVersion;
+      state.nurseReportRows = [];
+      state.nurseReportLoadedDate = '';
+      $('nurseReportBody').innerHTML = '';
+      $('nurseReportStatus').textContent =
+        'Click View Report to load the selected date.';
+      $('printNurseCommentsReport').disabled = true;
+      $('loadNurseCommentsReport').disabled = false;
+    });
+
+    $('loadNurseCommentsReport').addEventListener(
+      'click', loadNurseReport
+    );
+
+    $('printNurseCommentsReport').addEventListener(
+      'click', printNurseReport
+    );
+
+    $('closeNurseCommentsReport').addEventListener(
+      'click', () => $('nurseCommentsReportDialog').close()
+    );
+
+    $('doneNurseCommentsReport').addEventListener(
+      'click', () => $('nurseCommentsReportDialog').close()
+    );
+
     $('closeBloodResults').addEventListener('click', closeBloodDialog);
     $('doneBloodResults').addEventListener('click', closeBloodDialog);
     $('refreshBloodResults').addEventListener('click', loadBloodDetails);
@@ -1513,7 +1687,10 @@ function selectedPrintList() {
       printButton.type = 'button';
       printButton.className = 'primary';
       printButton.textContent = '▣ Print';
-      printButton.addEventListener('click', () => window.print());
+      printButton.addEventListener('click', () => {
+      document.body.classList.remove('printing-nurse-report');
+      window.print();
+    });
 
       const closeButton = document.createElement('button');
       closeButton.id = 'closePrintPreview';
@@ -1545,6 +1722,7 @@ function selectedPrintList() {
     $('doPrint').addEventListener('click', () => {
       buildPrint();
       dialog.close();
+      document.body.classList.remove('printing-nurse-report');
       window.print();
     });
     $('printForm').addEventListener(
@@ -1559,6 +1737,10 @@ function selectedPrintList() {
   loadAccess().then(() => {
     load();
     loadPending();
+  });
+
+  window.addEventListener('afterprint', () => {
+    document.body.classList.remove('printing-nurse-report');
   });
   window.addEventListener('beforeunload', e => {
     if (!hasUnsaved()) return;
@@ -1580,6 +1762,7 @@ function selectedPrintList() {
       document.hidden ||
       $('printDialog').open ||
       $('pendingCommentsDialog').open ||
+      $('nurseCommentsReportDialog').open ||
       $('bloodResultsDialog').open
     ) {
       return;
