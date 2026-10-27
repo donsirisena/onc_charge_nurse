@@ -46,6 +46,7 @@
     pendingError: '',
     pendingClearing: new Set(),
     pendingVersion: 0,
+    pendingCollapsed: new Set(),
     bloodPatients: new Set(),
     bloodSummaryAvailable: false,
     bloodPatient: null,
@@ -457,7 +458,13 @@
           apptDate: String(r.APPT_DATE || r.appt_date || ''),
           note: String(r.NURSE_NOTE || r.nurse_note || ''),
           highlight: String(r.HIGHLIGHT || r.highlight || '').toLowerCase(),
-          status: String(r.SCH_STATE || r.sch_state || '')
+          status: String(r.SCH_STATE || r.sch_state || ''),
+          attending: String(
+          r.ATTENDING || r.attending || 'Unassigned attending'
+  ),
+attendingPersonId: Number(
+  r.ATTENDING_PERSON_ID || r.attending_person_id || 0
+)
         }))
         .filter(r => r.schedEventId > 0 && r.personId > 0 && r.encntrId > 0);
       $('pendingCount').textContent = String(state.pending.length);
@@ -476,39 +483,148 @@
     }
   }
   function renderPending() {
-    const list = $('pendingCommentsList');
-    if (!list) return;
-    if (state.pendingLoading) {
-      list.innerHTML = '<p class="muted">Loading pending comments…</p>';
-      return;
-    }
-    if (state.pendingError) {
-      list.innerHTML = '<p class="pending-error">Unable to load pending comments: ' + esc(state.pendingError) + '</p>';
-      return;
-    }
-    if (!state.pending.length) {
-      list.innerHTML = '<p class="muted">No pending comments from the previous 30 days.</p>';
-      return;
-    }
-    list.innerHTML = state.pending.map(r => {
-      const id = esc(r.schedEventId);
-      const busy = state.pendingClearing.has(String(r.schedEventId));
-      return `<article class="pending-comment-item">
-        <div class="pending-comment-heading">
-          <div class="pending-comment-identity">
-            <strong>${esc(r.ptName || 'Patient')}</strong>
-            <span class="pending-comment-meta">MRN: ${esc(r.mrn)} · ${esc(r.status)}</span>
-          </div>
-          <span class="pending-comment-date">${esc(r.apptDate)}</span>
-          <div class="pending-comment-actions">
-            <button type="button" class="secondary" data-pending-chart="${id}">Open Chart</button>
-            ${CONFIG.readOnly ? '' : `<button type="button" class="secondary" data-pending-clear="${id}" ${busy ? 'disabled' : ''}>${busy ? 'Clearing…' : 'Clear Comment'}</button>`}
-          </div>
-        </div>
-        <p class="pending-comment-text">${esc(r.note)}</p>
-      </article>`;
-    }).join('');
+  const list = $('pendingCommentsList');
+  if (!list) return;
+
+  if (state.pendingLoading) {
+    list.innerHTML = '<p class="muted">Loading pending comments…</p>';
+    return;
   }
+
+  if (state.pendingError) {
+    list.innerHTML =
+      '<p class="pending-error">Unable to load pending comments: ' +
+      esc(state.pendingError) + '</p>';
+    return;
+  }
+
+  if (!state.pending.length) {
+    list.innerHTML =
+      '<p class="muted">No pending comments from the last 30 days, including today.</p>';
+    return;
+  }
+
+  // Group pending comments by attending physician.
+  const groups = new Map();
+
+  state.pending.forEach(r => {
+    const name = r.attending || 'Unassigned attending';
+    const key = r.attendingPersonId
+      ? String(r.attendingPersonId)
+      : 'name:' + name;
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        name: name,
+        items: []
+      });
+    }
+
+    groups.get(key).items.push(r);
+  });
+
+  // Sort attending groups alphabetically.
+  const sortedGroups = [...groups.entries()].sort(
+    (a, b) => a[1].name.localeCompare(b[1].name)
+  );
+
+  list.innerHTML = sortedGroups.map(([key, group]) => {
+    const collapsed = state.pendingCollapsed.has(key);
+
+    // Most recent appointment first within each attending.
+    const items = [...group.items].sort(
+      (a, b) => b.apptDate.localeCompare(a.apptDate)
+    );
+
+    return `
+      <section class="pending-attending-group">
+
+        <button
+          type="button"
+          class="pending-attending-heading"
+          data-pending-toggle="${esc(key)}"
+          aria-expanded="${!collapsed}"
+          style="width:100%;display:flex;justify-content:space-between;
+                 align-items:center;padding:10px 12px;
+                 margin:8px 0;background:#e6edf5;
+                 border:1px solid #cbd6e3;border-radius:5px;
+                 color:#1d3d5c;font-weight:600;text-align:left;
+                 cursor:pointer;"
+        >
+          <span>
+            ${collapsed ? '▸' : '▾'}
+            ${esc(group.name)}
+          </span>
+
+          <span>
+            ${items.length}
+            ${items.length === 1 ? 'comment' : 'comments'}
+          </span>
+        </button>
+
+        ${collapsed ? '' : `
+          <div class="pending-attending-items">
+            ${items.map(r => {
+              const id = esc(r.schedEventId);
+              const busy = state.pendingClearing.has(
+                String(r.schedEventId)
+              );
+
+              return `
+                <article class="pending-comment-item">
+                  <div class="pending-comment-heading">
+
+                    <div class="pending-comment-identity">
+                      <strong>
+                        ${esc(r.ptName || 'Patient')}
+                      </strong>
+
+                      <span class="pending-comment-meta">
+                        MRN: ${esc(r.mrn)}
+                        · ${esc(r.status)}
+                      </span>
+                    </div>
+
+                    <span class="pending-comment-date">
+                      ${esc(r.apptDate)}
+                    </span>
+
+                    <div class="pending-comment-actions">
+                      <button
+                        type="button"
+                        class="secondary"
+                        data-pending-chart="${id}"
+                      >
+                        Open Chart
+                      </button>
+
+                      ${CONFIG.readOnly ? '' : `
+                        <button
+                          type="button"
+                          class="secondary"
+                          data-pending-clear="${id}"
+                          ${busy ? 'disabled' : ''}
+                        >
+                          ${busy ? 'Clearing…' : 'Clear Comment'}
+                        </button>
+                      `}
+                    </div>
+
+                  </div>
+
+                  <p class="pending-comment-text">
+                    ${esc(r.note)}
+                  </p>
+                </article>
+              `;
+            }).join('')}
+          </div>
+        `}
+
+      </section>
+    `;
+  }).join('');
+}
   async function clearPending(id) {
     if (CONFIG.readOnly || state.pendingClearing.has(String(id))) return;
     const r = state.pending.find(item => String(item.schedEventId) === String(id));
@@ -1272,6 +1388,20 @@ function selectedPrintList() {
     $('donePendingComments').addEventListener('click', () => $('pendingCommentsDialog').close());
     $('refreshPendingComments').addEventListener('click', loadPending);
     $('pendingCommentsList').addEventListener('click', e => {
+        const toggle = e.target.closest('[data-pending-toggle]');
+
+  if (toggle) {
+    const key = toggle.dataset.pendingToggle;
+
+    if (state.pendingCollapsed.has(key)) {
+      state.pendingCollapsed.delete(key);
+    } else {
+      state.pendingCollapsed.add(key);
+    }
+
+    renderPending();
+    return;
+  }
       const chart = e.target.closest('[data-pending-chart]');
       if (chart) {
         const r = state.pending.find(item => String(item.schedEventId) === chart.dataset.pendingChart);
