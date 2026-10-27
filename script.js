@@ -612,9 +612,7 @@ attendingPersonId: Number(
 
                   </div>
 
-                  <p class="pending-comment-text">
-                    ${esc(r.note)}
-                  </p>
+                <p class="pending-comment-text">${esc(r.note)}</p>
                 </article>
               `;
             }).join('')}
