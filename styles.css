@@ -497,3 +497,166 @@
     margin: 5px 0 !important;
     padding: 6px 10px !important;
 }
+
+/* MD-GPT ✦ Nurse Comments Report */
+
+/* Report popup */
+.nurse-report-dialog {
+    width: min(1500px, 98vw);
+    max-width: 1500px;
+    height: min(88vh, 900px);
+    max-height: 88vh;
+    padding: 0;
+    border: 1px solid #b9cde1;
+    border-radius: 10px;
+    background: #f0f6fc;
+    color: #1b2939;
+    box-shadow: 0 20px 60px #112f5047;
+    flex-direction: column;
+}
+
+.nurse-report-dialog[open] {
+    display: flex;
+}
+
+.nurse-report-dialog::backdrop {
+    background: #0f233c7a;
+}
+
+.nurse-report-dialog .dialog-heading {
+    flex: 0 0 auto;
+    padding: 12px 18px;
+    background: #dceaf7;
+    border-bottom: 1px solid #c6d8e9;
+}
+
+.nurse-report-dialog .dialog-heading h2 {
+    margin: 0;
+    font-size: 17px;
+    color: #1d3d5c;
+}
+
+.nurse-report-toolbar {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    padding: 12px 18px;
+    flex-wrap: wrap;
+}
+
+#nurseReportStatus {
+    padding: 0 18px 8px;
+}
+
+.nurse-report-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    margin: 0 15px;
+    background: white;
+    border: 1px solid #d4e0ed;
+}
+
+.nurse-report-dialog > .dialog-actions {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 10px 18px;
+    background: #e8f1fa;
+    border-top: 1px solid #d5e2ef;
+}
+
+/* Compact table */
+.nurse-report-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11px;
+    color: #111;
+}
+
+.nurse-report-table th,
+.nurse-report-table td {
+    padding: 4px 5px;
+    border: 1px solid #c8c8c8;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+}
+
+.nurse-report-table th {
+    background: #e8eef5;
+    font-weight: 700;
+}
+
+.nurse-report-table th:nth-child(1) { width: 18%; }
+.nurse-report-table th:nth-child(2) { width: 7%; }
+.nurse-report-table th:nth-child(3) { width: 23%; }
+.nurse-report-table th:nth-child(4) { width: 9%; }
+.nurse-report-table th:nth-child(5) { width: 5%; }
+.nurse-report-table th:nth-child(6) { width: 18%; }
+.nurse-report-table th:nth-child(7) { width: 20%; }
+
+/* Print only the nurse comments report */
+@media print {
+
+    body.printing-nurse-report #printArea {
+        display: none !important;
+    }
+
+    body.printing-nurse-report #nurseReportPrintArea {
+        display: block !important;
+        width: 100%;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: 0 !important;
+        overflow: visible !important;
+    }
+
+    body:not(.printing-nurse-report) #nurseReportPrintArea {
+        display: none !important;
+    }
+
+    .nurse-report-print-sheet {
+        font-family: Arial, Helvetica, sans-serif;
+        color: #000;
+        background: #fff;
+    }
+
+    .nurse-report-print-sheet h1 {
+        font-size: 13pt;
+        margin: 0 0 3mm;
+    }
+
+    .nurse-report-print-sheet p {
+        font-size: 9pt;
+        margin: 0 0 4mm;
+    }
+
+    .nurse-report-print-sheet .nurse-report-table {
+        width: 100%;
+        table-layout: fixed;
+        font-size: 7.5pt;
+    }
+
+    .nurse-report-print-sheet .nurse-report-table th,
+    .nurse-report-print-sheet .nurse-report-table td {
+        padding: 2px 3px;
+        line-height: 1.15;
+        border: 1px solid #aaa;
+    }
+
+    .nurse-report-print-sheet .nurse-report-table th {
+        background: white !important;
+    }
+
+    .nurse-report-print-sheet thead {
+        display: table-header-group;
+    }
+
+    .nurse-report-print-sheet tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+}
