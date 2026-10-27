@@ -476,3 +476,25 @@
 .blood-results-table td{padding:8px 9px;border-bottom:1px solid #e6edf4;overflow-wrap:anywhere}
 .blood-results-dialog>.dialog-actions{margin:0;padding:12px 18px;background:#e8f1fa;border-top:1px solid #d5e2ef}
 @media print{.blood-results-dialog{display:none!important}}
+
+/* MD-GPT ✦ Compact pending nurse comments */
+
+#pendingCommentsList .pending-comment-item {
+    padding: 6px 10px;
+    margin-bottom: 5px;
+}
+
+#pendingCommentsList .pending-comment-text {
+    min-height: 0;
+    height: auto;
+    padding: 5px 10px;
+    margin: 4px 0 0;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+#pendingCommentsList .pending-attending-heading {
+    margin: 6px 0 !important;
+    padding: 7px 10px !important;
+}
