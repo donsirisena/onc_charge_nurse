@@ -660,3 +660,12 @@
         page-break-inside: avoid;
     }
 }
+/* MD-GPT ✦
+   Keep the Nurse Comments printable area hidden
+   during normal dashboard viewing.
+*/
+@media screen {
+    #nurseReportPrintArea {
+        display: none !important;
+    }
+}
