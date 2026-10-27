@@ -20,6 +20,7 @@
       <div class="toolbar-actions">
         <button id="refreshButton" type="button" class="secondary">↻ Refresh</button>
         <button id="pendingCommentsButton" type="button" class="secondary">📝 Pending Comments (<span id="pendingCount">0</span>)</button>
+        <button id="nurseCommentsReportButton" type="button" class="secondary">▣ Nurse Comments Report</button>
         <button id="runOriginalReport" type="button" class="primary" onclick="CCLLINK('mrd_onc_nursing_schedule', '', 0)">▣ Run DRP Report</button>
         <button id="printOptionsButton" type="button" class="primary">▣ Print Options</button>
       </div>
@@ -34,6 +35,7 @@
     <div class="view-heading no-print"><div><h2>Appointments</h2><p id="filterSummary" class="muted"></p></div><div class="view-controls"><label><input type="checkbox" id="showNotes" checked> Show nurse notes</label><button type="button" id="expandAll" class="text-button">Expand all</button><button type="button" id="collapseAll" class="text-button">Collapse all</button></div></div>
     <section id="appointmentGroups" class="groups no-print" aria-label="Appointment list"></section>
     <section id="printArea" class="print-only" aria-label="Printable appointment list"></section>
+    <section id="nurseReportPrintArea" class="print-only" aria-label="Printable nurse comments report"></section>
   </main>
   <dialog id="printDialog" class="print-dialog no-print">
     <form method="dialog" id="printForm">
@@ -58,6 +60,64 @@
     <div id="pendingCommentsList"></div>
     <div class="dialog-actions"><button id="refreshPendingComments" type="button" class="secondary">↻ Refresh</button><button id="donePendingComments" type="button" class="primary">Close</button></div>
   </dialog>
+  
+<!-- MD-GPT ✦ Printable Nurse Comments Report -->
+<dialog id="nurseCommentsReportDialog" class="nurse-report-dialog no-print">
+
+  <div class="dialog-heading">
+    <h2>Oncology — Nurse Comments Report</h2>
+    <button id="closeNurseCommentsReport"
+            type="button"
+            class="icon-button"
+            aria-label="Close">×</button>
+  </div>
+
+  <div class="nurse-report-toolbar">
+    <div class="field">
+      <label for="nurseReportDate">Appointment Date</label>
+      <input id="nurseReportDate" type="date">
+    </div>
+
+    <button id="loadNurseCommentsReport"
+            type="button"
+            class="secondary">↻ View Report</button>
+
+    <button id="printNurseCommentsReport"
+            type="button"
+            class="primary">Print Report</button>
+  </div>
+
+  <div id="nurseReportStatus"
+       class="muted"
+       role="status"
+       aria-live="polite"></div>
+
+  <div class="nurse-report-scroll">
+    <table class="nurse-report-table">
+      <thead>
+        <tr>
+          <th>Patient Name</th>
+          <th>MRN</th>
+          <th>Regimen</th>
+          <th>Appt Date</th>
+          <th>Time</th>
+          <th>Resource</th>
+          <th>Nursing Note</th>
+        </tr>
+      </thead>
+      <tbody id="nurseReportBody"></tbody>
+    </table>
+  </div>
+
+  <div class="dialog-actions">
+    <button id="doneNurseCommentsReport"
+            type="button"
+            class="secondary">Close</button>
+  </div>
+
+</dialog>
+
+  
   <!-- Recent Blood Results Popup -->
   <dialog id="bloodResultsDialog" class="blood-results-dialog no-print">
     <div class="dialog-heading"><div><h2>🧪 Recent Blood Results</h2><p class="muted">Verified numeric results from the past 72 hours</p></div><button id="closeBloodResults" type="button" class="icon-button" aria-label="Close">×</button></div>
