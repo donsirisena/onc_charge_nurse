@@ -13,7 +13,7 @@
     pendingProgram: 'mrd_onc_nurse_notes_pending:group1',
     bloodSummaryProgram: 'mrd_onc_charge_nurse_bloodwork:group1',
     bloodDetailProgram: 'mrd_onc_charge_nurse_lab_detai:group1',
-    nurseReportProgram: 'mrd_onc_nurse_comment_mpage:group1',
+    nurseReportProgram: 'mrd_onc_nurse_com_print_mpage:group1',
     readOnly: true, // Fail closed until CCL confirms editing access.
     autoRefreshMs: 180000,
     cclDateFormat: 'MM/DD/YYYY',
