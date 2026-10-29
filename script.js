@@ -1364,7 +1364,7 @@ function selectedPrintList() {
 
     return '<table class="nurse-report-table">' +
       '<colgroup>' +
-      [13, 15, 7, 18, 9, 5, 15, 18].map(w =>
+      [12, 15, 7, 18, 9, 5, 15, 19].map(w =>
         '<col style="width:' + w + '%">'
       ).join('') +
       '</colgroup>' +
