@@ -592,14 +592,14 @@
 
 /* MD-GPT ✦ Nurse Comments Report - 8 columns */
 
-.nurse-report-table th:nth-child(1) { width: 13%; } /* Attending */
+.nurse-report-table th:nth-child(1) { width: 12%; } /* Attending */
 .nurse-report-table th:nth-child(2) { width: 15%; } /* Patient Name */
 .nurse-report-table th:nth-child(3) { width: 7%;  } /* MRN */
 .nurse-report-table th:nth-child(4) { width: 18%; } /* Regimen */
 .nurse-report-table th:nth-child(5) { width: 9%;  } /* Appt Date */
 .nurse-report-table th:nth-child(6) { width: 5%;  } /* Time */
 .nurse-report-table th:nth-child(7) { width: 15%; } /* Resource */
-.nurse-report-table th:nth-child(8) { width: 18%; } /* Nursing Note */
+.nurse-report-table th:nth-child(8) { width: 19%; } /* Nursing Note */
 
 /* Print only the nurse comments report */
 @media print {
