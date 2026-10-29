@@ -1352,18 +1352,19 @@ function selectedPrintList() {
 
   function nurseReportTable(rows) {
     const columns = [
-      ['PT_NAME', 'Patient Name'],
-      ['MRN', 'MRN'],
-      ['REGIMEN', 'Regimen'],
-      ['APPT_DATE', 'Appt Date'],
-      ['APPT_TM', 'Time'],
-      ['RESOURCE', 'Resource'],
-      ['NURSING_NOTE', 'Nursing Note']
-    ];
+    ['ATTENDING', 'Attending'],
+    ['PT_NAME', 'Patient Name'],
+    ['MRN', 'MRN'],
+    ['REGIMEN', 'Regimen'],
+    ['APPT_DATE', 'Appt Date'],
+    ['APPT_TM', 'Time'],
+    ['RESOURCE', 'Resource'],
+    ['NURSING_NOTE', 'Nursing Note']
+  ];
 
     return '<table class="nurse-report-table">' +
       '<colgroup>' +
-      [18, 7, 23, 9, 5, 18, 20].map(w =>
+      [13, 15, 7, 18, 9, 5, 15, 18].map(w =>
         '<col style="width:' + w + '%">'
       ).join('') +
       '</colgroup>' +
