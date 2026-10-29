@@ -660,7 +660,7 @@
         page-break-inside: avoid;
     }
 }
-/* MD-GPT ✦
+/* MD ✦
    Keep the Nurse Comments printable area hidden
    during normal dashboard viewing.
 */
@@ -668,4 +668,28 @@
     #nurseReportPrintArea {
         display: none !important;
     }
+}
+/* MD-GPT ✦ Hospital admission indicators */
+
+.hospital-indicator {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.hospital-ed {
+    background: #ffe5e5;
+    color: #a61b1b;
+    border: 1px solid #f2b8b8;
+}
+
+.hospital-ip {
+    background: #fff0d6;
+    color: #895400;
+    border: 1px solid #eacb90;
 }
