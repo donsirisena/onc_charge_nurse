@@ -197,7 +197,10 @@
       pplanName: String(x.pplanName || ''),
       regimenName: String(x.regimenName || ''),
       dot: String(x.dot || ''),
-      resource: String(x.resource || '')
+      resource: String(x.resource || ''),
+      hospitalStatus: String(x.hospitalStatus || ''),
+      hospitalUnit: String(x.hospitalUnit || ''),
+      hospitalEncntrId: Number(x.hospitalEncntrId || 0)
     };
   }
   function parseReply(text) {
@@ -971,10 +974,23 @@ attendingPersonId: Number(
                                         data-chart="${id}">
                                   ${esc(a.ptName)}
                                 </button>
+
+                                ${a.hospitalStatus === 'ED'
+                                  ? `<span class="hospital-indicator hospital-ed"
+                                           title="Emergency — ${esc(a.hospitalUnit || 'Unit unavailable')}">🚑 ED</span>`
+                                  : a.hospitalStatus === 'IP'
+                                  ? `<span class="hospital-indicator hospital-ip"
+                                           title="Inpatient — ${esc(a.hospitalUnit || 'Unit unavailable')}">🛏️ IP</span>`
+                                  : ''}
+
                                 <div class="patient-sub">
                                   MRN: ${esc(a.mrn)}
                                   ${state.bloodPatients.has(a.personId + ':' + a.encntrId)
-                                    ? `<button type="button" class="blood-results-trigger" data-blood="${id}" title="View recent blood results" aria-label="View recent blood results for ${esc(a.ptName)}">🧪 Blood</button>`
+                                    ? `<button type="button"
+                                               class="blood-results-trigger"
+                                               data-blood="${id}"
+                                               title="View recent blood results"
+                                               aria-label="View recent blood results for ${esc(a.ptName)}">🧪 Labs</button>`
                                     : ''}
                                 </div>
                               </td>
