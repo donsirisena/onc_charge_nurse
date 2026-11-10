@@ -883,8 +883,15 @@
 @media print { .nurse-assignment-banner { display: none !important; } }
 /* Overlay the unused strip above toolbar controls without changing its height. */
 .toolbar { position: relative; }
+/* MD-GPT ✦ Fix nurse assignment banner positioning */
+
 .toolbar > .nurse-assignment-banner {
-  position: absolute; left: 4px; top: -24px; right: 4px;
-  margin: 0; z-index: 1; pointer-events: none;
+    position: absolute;
+    top: 4px;
+    left: 10px;
+    right: 10px;
+    margin: 0;
+    z-index: 1;
+    pointer-events: none;
 }
 .toolbar > .nurse-assignment-banner .assignment-physician-badge { pointer-events: auto; }
