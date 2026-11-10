@@ -696,3 +696,32 @@
     color: #895400;
     border: 1px solid #eacb90;
 }
+/* MD-GPT ✦ Oncology physician multi-select — append to styles.css */
+.physician-filter-field { position: relative; }
+.physician-selector { position: relative; width: 100%; }
+.physician-dropdown-button { width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.physician-dropdown-panel[hidden] { display: none !important; }
+.physician-dropdown-panel {
+  position: absolute; top: calc(100% + 5px); left: 0;
+  z-index: 1000; width: 295px; max-width: min(92vw, 340px);
+  max-height: min(460px, 70vh); overflow-y: auto;
+  background: #fff; border: 1px solid #cbd6e3; border-radius: 7px;
+  box-shadow: 0 8px 22px rgba(0,0,0,.16); padding: 10px;
+}
+.physician-dropdown-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+.physician-dropdown-actions button { font-size: 11px; padding: 6px; }
+.physician-checkbox-list { display: flex; flex-direction: column; gap: 3px; }
+.physician-checkbox-item {
+  display: flex; align-items: center; gap: 9px; padding: 6px;
+  font-size: 12px; cursor: pointer; border-radius: 4px;
+}
+.physician-checkbox-item:hover { background: #eef4fa; }
+.physician-checkbox-item input { flex: 0 0 auto; margin: 0; }
+.physician-initials {
+  display: inline-flex; justify-content: center; align-items: center;
+  min-width: 31px; padding: 3px 5px; border-radius: 4px;
+  color: white; font-size: 10px; font-weight: 700;
+}
+@media screen and (min-width: 850px) {
+  .toolbar .physician-filter-field { flex: 0 0 205px; min-width: 0; }
+}
