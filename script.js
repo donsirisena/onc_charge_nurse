@@ -25,12 +25,27 @@
       }
     }
   };
+  // MD-GPT ✦ Central physician roster. Set active:false when a physician leaves.
+  const ONCOLOGY_PHYSICIANS = [
+    { id: 564826, name: 'Vivian Glenns', initials: 'VG', color: '#8B5CF6', active: true },
+    { id: 1253867, name: 'Jeffrey Silverman', initials: 'JS', color: '#64748B', active: true },
+    { id: 1883690, name: 'Daryl Roitman', initials: 'DRo', color: '#F59E0B', active: true },
+    { id: 4316564, name: 'Paula Fishman', initials: 'PF', color: '#33ccba', active: true },
+    { id: 5034233, name: 'Daniel Robson', initials: 'DRb', color: '#5ddd8c', active: true },
+    { id: 5809916, name: 'Kathryn Towns', initials: 'KT', color: '#a7537d', active: true },
+    { id: 6130289, name: 'Sarah Ingber', initials: 'SI', color: '#CA8A04', active: true },
+    { id: 6503977, name: 'Joanne Yu', initials: 'JY', color: '#3B82F6', active: true },
+    { id: 9168257, name: 'Jeffrey Myers', initials: 'JM', color: '#cf4a4a', active: true }
+  ];
+  const activePhysicians = () => ONCOLOGY_PHYSICIANS.filter(p => p.active);
+  const allPhysicianIds = () => new Set(activePhysicians().map(p => String(p.id)));
+
   const $ = id => document.getElementById(id);
   const state = {
     appointments: [],
     accessLevel: 'READ_ONLY',
     accessChecked: false,
-    attending: 'all',
+    selectedPhysicians: allPhysicianIds(),
     search: '',
     date: '',
     collapsed: new Set(),
@@ -823,16 +838,32 @@ attendingPersonId: Number(
     }
     return state.edits.get(k);
   }
+  // MD-GPT ✦ When all active physicians are checked, preserve the original
+  // All Attendings behaviour (including unexpected/out-of-roster attendings).
+  function allPhysiciansSelected() {
+    return activePhysicians().every(p => state.selectedPhysicians.has(String(p.id)));
+  }
+
+  function matchesPhysicianSelection(a) {
+    return allPhysiciansSelected() ||
+      state.selectedPhysicians.has(String(a.attendingPersonId));
+  }
+
+  function physicianSelectionLabel() {
+    const count = activePhysicians().filter(p => state.selectedPhysicians.has(String(p.id))).length;
+    return allPhysiciansSelected() ? 'All Attendings' :
+      count === 0 ? 'No Physicians Selected' :
+      count + ' Selected Physicians';
+  }
+
   function visible() {
     const q = state.search.toLowerCase();
     return state.appointments.filter(a =>
-      (state.attending === 'all' ||
-       String(a.attendingPersonId || a.attending) === state.attending) &&
-      (!q ||
-       a.ptName.toLowerCase().includes(q) ||
-       a.mrn.toLowerCase().includes(q))
+      matchesPhysicianSelection(a) &&
+      (!q || a.ptName.toLowerCase().includes(q) || a.mrn.toLowerCase().includes(q))
     );
   }
+
   function allAttendingOptions() {
     const map = new Map();
     state.appointments.forEach(a => {
@@ -841,24 +872,43 @@ attendingPersonId: Number(
     });
     return [...map].sort((a, b) => a[1].localeCompare(b[1]));
   }
+
   function setOptions() {
+    // Keep the existing print dialog's individual-physician options.
     const options = allAttendingOptions();
-    const selected = state.attending;
-    $('attendingFilter').innerHTML =
-      '<option value="all">All Attendings</option>' +
-      options.map(([k, n]) =>
-        '<option value="' + esc(k) + '">' + esc(n) + '</option>'
-      ).join('');
-    state.attending = options.some(([k]) => k === selected)
-      ? selected : 'all';
-    $('attendingFilter').value = state.attending;
+    const previous = $('printAttending').value;
     $('printAttending').innerHTML =
       '<option value="current">Use dashboard selection</option>' +
       '<option value="all">All Attendings</option>' +
       options.map(([k, n]) =>
         '<option value="' + esc(k) + '">' + esc(n) + '</option>'
       ).join('');
+    $('printAttending').value =
+      previous === 'current' || previous === 'all' || options.some(([k]) => k === previous)
+        ? previous : 'current';
+    renderPhysicianSelector();
   }
+
+  function renderPhysicianSelector() {
+    const doctors = activePhysicians();
+    const selectedCount = doctors.filter(p => state.selectedPhysicians.has(String(p.id))).length;
+    $('physicianDropdownButton').textContent =
+      selectedCount === doctors.length ? 'All ' + doctors.length + ' Physicians Selected ▾' :
+      selectedCount + ' of ' + doctors.length + ' Physicians Selected ▾';
+    $('physicianCheckboxList').innerHTML = doctors.map(p =>
+      '<label class="physician-checkbox-item">' +
+      '<input type="checkbox" data-physician-id="' + p.id + '" ' +
+      (state.selectedPhysicians.has(String(p.id)) ? 'checked' : '') + '>' +
+      '<span class="physician-initials" style="background:' + p.color + '">' + esc(p.initials) + '</span>' +
+      '<span>' + esc(p.name) + '</span></label>'
+    ).join('');
+  }
+
+  function updatePhysicianSelection() {
+    renderPhysicianSelector();
+    render();
+  }
+
   function grouped(list) {
     const groups = new Map();
     list.forEach(a => {
@@ -899,9 +949,7 @@ attendingPersonId: Number(
       ).length;
     $('filterSummary').textContent =
       displayDate(state.date) + ' · ' +
-      (state.attending === 'all'
-        ? 'All Attendings'
-        : ($('attendingFilter').selectedOptions[0]?.textContent || '')) +
+      physicianSelectionLabel() +
       ' · ' + list.length + ' appointments';
     if (!list.length) {
       $('appointmentGroups').innerHTML =
@@ -1187,22 +1235,19 @@ attendingPersonId: Number(
   }
   // Existing print functionality
   
-function selectedPrintList() {
-  const value = $('printAttending').value;
-  const key = value === 'current'
-    ? state.attending : value;
-  const q = state.search.toLowerCase();
-  const commentsOnly = $('printOnlyWithComments').checked;
+ function selectedPrintList() {
+   const value = $('printAttending').value;
+   const q = state.search.toLowerCase();
+   const commentsOnly = $('printOnlyWithComments').checked;
 
-  return state.appointments.filter(a =>
-    (key === 'all' ||
-      String(a.attendingPersonId || a.attending) === key) &&
-    (!q ||
-      a.ptName.toLowerCase().includes(q) ||
-      a.mrn.toLowerCase().includes(q)) &&
-    (!commentsOnly || Boolean(savedFor(a).note.trim()))
-  );
-}
+   return state.appointments.filter(a =>
+     (value === 'all' ||
+       (value === 'current' ? matchesPhysicianSelection(a) :
+         String(a.attendingPersonId || a.attending) === value)) &&
+     (!q || a.ptName.toLowerCase().includes(q) || a.mrn.toLowerCase().includes(q)) &&
+     (!commentsOnly || Boolean(savedFor(a).note.trim()))
+   );
+ }
 
   function printOptions() {
     return {
@@ -1224,9 +1269,7 @@ function selectedPrintList() {
       printAttending === 'all'
         ? 'All Attendings'
         : printAttending === 'current'
-          ? (state.attending === 'all'
-              ? 'All Attendings'
-              : $('attendingFilter').selectedOptions[0]?.textContent)
+          ? physicianSelectionLabel()
           : $('printAttending').selectedOptions[0]?.textContent;
     const columns = [
       'Time', 'Patient', 'MRN', 'Regimen / Plan', 'DoT'
@@ -1513,14 +1556,44 @@ function selectedPrintList() {
         state.saved.clear();
         state.notesLoaded = false;
       state.appointments = [];
-      state.attending = 'all';
+      // Physician selection persists across date changes.
       state.collapsed.clear();
       render();
       load();
     });
-    $('attendingFilter').addEventListener('change', e => {
-      state.attending = e.target.value;
-      render();
+    // MD-GPT ✦ Physician checkbox dropdown (CERT stage: in-memory only).
+    $('physicianDropdownButton').addEventListener('click', () => {
+      const panel = $('physicianDropdownPanel');
+      panel.hidden = !panel.hidden;
+      $('physicianDropdownButton').setAttribute('aria-expanded', String(!panel.hidden));
+    });
+    $('physicianCheckboxList').addEventListener('change', e => {
+      const id = e.target.dataset.physicianId;
+      if (!id) return;
+      if (e.target.checked) state.selectedPhysicians.add(id);
+      else state.selectedPhysicians.delete(id);
+      updatePhysicianSelection();
+    });
+    $('selectAllPhysicians').addEventListener('click', () => {
+      state.selectedPhysicians = allPhysicianIds();
+      updatePhysicianSelection();
+    });
+    $('clearPhysicianSelection').addEventListener('click', () => {
+      // Saved preferences are not implemented in this first CERT stage.
+      state.selectedPhysicians = allPhysicianIds();
+      updatePhysicianSelection();
+    });
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.physician-selector')) {
+        $('physicianDropdownPanel').hidden = true;
+        $('physicianDropdownButton').setAttribute('aria-expanded', 'false');
+      }
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        $('physicianDropdownPanel').hidden = true;
+        $('physicianDropdownButton').setAttribute('aria-expanded', 'false');
+      }
     });
     $('searchBox').addEventListener('input', e => {
       state.search = e.target.value.trim();
@@ -1749,6 +1822,7 @@ function selectedPrintList() {
   state.date = todayLocal();
   $('appointmentDate').value = state.date;
   bind();
+  renderPhysicianSelector();
   showAccessStatus();
   // Access must be checked before editable controls are ever displayed.
   loadAccess().then(() => {
