@@ -313,6 +313,54 @@
       } catch (error) { reject(error); }
     });
   }
+  // MD-GPT ✦ Per-user physician preferences (IDs only; no patient data).
+  // Browser-local storage may not persist across PowerChart workstations.
+  function physicianStorageKey() {
+    return Number.isSafeInteger(state.userId) && state.userId > 0
+      ? 'nygh_onc_charge_physicians_v1_' + state.userId
+      : null;
+  }
+
+  function restorePhysicianSelection() {
+    // Never use another user's selections before the access CCL identifies us.
+    state.selectedPhysicians = allPhysicianIds();
+    const key = physicianStorageKey();
+    if (!key) return;
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw === null) return; // First visit: all nine selected.
+      const ids = JSON.parse(raw);
+      if (!Array.isArray(ids) || !ids.every(id => /^\d+$/.test(String(id)))) return;
+      const valid = allPhysicianIds();
+      state.selectedPhysicians = new Set(ids.map(String).filter(id => valid.has(id)));
+    } catch (error) {
+      // Embedded browser may disable localStorage; remain usable in memory.
+      console.warn('Unable to restore physician preferences:', error);
+    }
+  }
+
+  function savePhysicianSelection() {
+    const key = physicianStorageKey();
+    if (!key) return;
+    try {
+      window.localStorage.setItem(key, JSON.stringify([...state.selectedPhysicians]));
+    } catch (error) {
+      console.warn('Unable to save physician preferences:', error);
+      notice('Physician selection changed, but browser storage is unavailable; it may reset on reopening.', true);
+    }
+  }
+
+  function clearSavedPhysicianSelection() {
+    const key = physicianStorageKey();
+    if (!key) return;
+    try {
+      window.localStorage.removeItem(key);
+    } catch (error) {
+      console.warn('Unable to clear physician preferences:', error);
+      notice('Unable to clear saved physician preferences in browser storage.', true);
+    }
+  }
+
   // The UI is read-only until the Cerner authorization CCL succeeds.
   // The Save CCL independently enforces authorization on the server.
   function showAccessStatus() {
@@ -342,6 +390,8 @@
     state.accessChecked = false;
     state.userId = 0;
     state.userName = '';
+    state.selectedPhysicians = allPhysicianIds();
+    renderPhysicianSelector();
     renderAssignmentBanner();
     closePalette();
     showAccessStatus();
@@ -355,11 +405,15 @@
       state.accessLevel = canEdit ? (isAdmin && level === 'ADMIN' ? 'ADMIN' : 'EDITOR') : 'READ_ONLY';
       state.userId = Number(root.USER_ID ?? root.user_id ?? 0);
       state.userName = String(root.USER_NAME ?? root.user_name ?? '').trim();
+      restorePhysicianSelection();
+      renderPhysicianSelector();
     } catch (error) {
       CONFIG.readOnly = true;
       state.accessLevel = 'READ_ONLY';
       state.userId = 0;
       state.userName = '';
+      state.selectedPhysicians = allPhysicianIds();
+      renderPhysicianSelector();
       // Do not grant access when CCL is unavailable or returns malformed JSON.
       notice('Access verification unavailable. Dashboard is read-only.', true);
     } finally {
@@ -938,6 +992,7 @@ attendingPersonId: Number(
   }
 
   function updatePhysicianSelection() {
+    savePhysicianSelection();
     renderPhysicianSelector();
     renderAssignmentBanner();
     render();
@@ -1595,7 +1650,7 @@ attendingPersonId: Number(
       render();
       load();
     });
-    // MD-GPT ✦ Physician checkbox dropdown (CERT stage: in-memory only).
+    // MD-GPT ✦ Physician checkbox dropdown with per-user browser preferences.
     $('physicianDropdownButton').addEventListener('click', () => {
       const panel = $('physicianDropdownPanel');
       panel.hidden = !panel.hidden;
@@ -1613,9 +1668,11 @@ attendingPersonId: Number(
       updatePhysicianSelection();
     });
     $('clearPhysicianSelection').addEventListener('click', () => {
-      // Saved preferences are not implemented in this first CERT stage.
+      clearSavedPhysicianSelection();
       state.selectedPhysicians = allPhysicianIds();
-      updatePhysicianSelection();
+      renderPhysicianSelector();
+      renderAssignmentBanner();
+      render();
     });
     document.addEventListener('click', e => {
       if (!e.target.closest('.physician-selector')) {
