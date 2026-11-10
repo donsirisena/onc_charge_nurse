@@ -859,3 +859,32 @@
   overflow-wrap: normal;
   word-break: normal;
 }
+/* MD-GPT ✦ Assignment banner: fits inside existing toolbar top padding */
+.nurse-assignment-banner {
+  display: flex; align-items: center; flex-wrap: nowrap; gap: 8px;
+  min-height: 18px; max-height: 20px; overflow: hidden;
+  margin: 0 0 3px 0; padding: 0 2px;
+  font-size: 11px; line-height: 18px; color: #254b70;
+}
+.nurse-assignment-identity { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; flex: 0 0 auto; }
+.nurse-assignment-identity svg { width: 14px; height: 14px; flex-shrink: 0; }
+.nurse-assignment-divider { color: #a2b3c5; }
+.nurse-assignment-label { white-space: nowrap; color: #526c86; }
+.nurse-assignment-physicians { display: inline-flex; gap: 4px; align-items: center; min-width: 0; overflow: hidden; }
+.assignment-physician-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 26px; height: 17px; padding: 0 4px;
+  border-radius: 4px; font-size: 10px; line-height: 17px;
+  font-weight: 700; color: white; white-space: nowrap;
+}
+.assignment-none { color: #7b4c4c; font-style: italic; white-space: nowrap; }
+/* The banner is inserted inside the existing toolbar; adjust existing top
+   padding rather than increasing toolbar height if necessary in CERT. */
+@media print { .nurse-assignment-banner { display: none !important; } }
+/* Overlay the unused strip above toolbar controls without changing its height. */
+.toolbar { position: relative; }
+.toolbar > .nurse-assignment-banner {
+  position: absolute; left: 4px; top: -24px; right: 4px;
+  margin: 0; z-index: 1; pointer-events: none;
+}
+.toolbar > .nurse-assignment-banner .assignment-physician-badge { pointer-events: auto; }
