@@ -30,12 +30,12 @@
     { id: 564826, name: 'Vivian Glenns', initials: 'VG', color: '#8B5CF6', active: true },
     { id: 1253867, name: 'Jeffrey Silverman', initials: 'JS', color: '#64748B', active: true },
     { id: 1883690, name: 'Daryl Roitman', initials: 'DRo', color: '#F59E0B', active: true },
-    { id: 4316564, name: 'Paula Fishman', initials: 'PF', color: '#33ccba', active: true },
-    { id: 5034233, name: 'Daniel Robson', initials: 'DRb', color: '#5ddd8c', active: true },
-    { id: 5809916, name: 'Kathryn Towns', initials: 'KT', color: '#a7537d', active: true },
+    { id: 4316564, name: 'Paula Fishman', initials: 'PF', color: '#14B8A6', active: true },
+    { id: 5034233, name: 'Daniel Robson', initials: 'DRb', color: '#22C55E', active: true },
+    { id: 5809916, name: 'Kathryn Towns', initials: 'KT', color: '#EC4899', active: true },
     { id: 6130289, name: 'Sarah Ingber', initials: 'SI', color: '#CA8A04', active: true },
     { id: 6503977, name: 'Joanne Yu', initials: 'JY', color: '#3B82F6', active: true },
-    { id: 9168257, name: 'Jeffrey Myers', initials: 'JM', color: '#cf4a4a', active: true }
+    { id: 9168257, name: 'Jeffrey Myers', initials: 'JM', color: '#EF4444', active: true }
   ];
   const activePhysicians = () => ONCOLOGY_PHYSICIANS.filter(p => p.active);
   const allPhysicianIds = () => new Set(activePhysicians().map(p => String(p.id)));
@@ -45,6 +45,8 @@
     appointments: [],
     accessLevel: 'READ_ONLY',
     accessChecked: false,
+    userId: 0,
+    userName: '',
     selectedPhysicians: allPhysicianIds(),
     search: '',
     date: '',
@@ -338,6 +340,9 @@
     CONFIG.readOnly = true;
     state.accessLevel = 'READ_ONLY';
     state.accessChecked = false;
+    state.userId = 0;
+    state.userName = '';
+    renderAssignmentBanner();
     closePalette();
     showAccessStatus();
     renderPending();
@@ -348,9 +353,13 @@
       const level = String(root.ACCESS_LEVEL ?? root.access_level ?? 'READ_ONLY').toUpperCase();
       CONFIG.readOnly = !canEdit;
       state.accessLevel = canEdit ? (isAdmin && level === 'ADMIN' ? 'ADMIN' : 'EDITOR') : 'READ_ONLY';
+      state.userId = Number(root.USER_ID ?? root.user_id ?? 0);
+      state.userName = String(root.USER_NAME ?? root.user_name ?? '').trim();
     } catch (error) {
       CONFIG.readOnly = true;
       state.accessLevel = 'READ_ONLY';
+      state.userId = 0;
+      state.userName = '';
       // Do not grant access when CCL is unavailable or returns malformed JSON.
       notice('Access verification unavailable. Dashboard is read-only.', true);
     } finally {
@@ -360,6 +369,7 @@
         state.edits = new Map([...state.saved].map(([id, note]) => [id, { ...note }]));
       }
       showAccessStatus();
+      renderAssignmentBanner();
       renderPending();
       if (state.date) render();
     }
@@ -904,8 +914,32 @@ attendingPersonId: Number(
     ).join('');
   }
 
+  // MD-GPT ✦ Compact identity and assignment row; no patient data here.
+  function renderAssignmentBanner() {
+    const banner = $('nurseAssignmentBanner');
+    if (!banner) return;
+    const role = state.accessLevel === 'ADMIN' ? 'CI Admin' :
+      state.accessLevel === 'EDITOR' ? 'Charge Nurse' : 'Viewer';
+    const name = state.userName || (state.accessChecked ? 'Name unavailable' : 'Checking user…');
+    const selected = activePhysicians().filter(p => state.selectedPhysicians.has(String(p.id)));
+    const nurse = banner.querySelector('[data-nurse-identity]');
+    const doctors = banner.querySelector('[data-assigned-physicians]');
+    if (nurse) {
+      nurse.textContent = role + ' · ' + name;
+      nurse.title = name;
+    }
+    if (doctors) {
+      doctors.innerHTML = selected.length ? selected.map(p =>
+        '<span class="assignment-physician-badge" style="background:' + p.color +
+        '" title="' + esc(p.name) + '" aria-label="' + esc(p.name) + '">' +
+        esc(p.initials) + '</span>'
+      ).join('') : '<span class="assignment-none">None selected</span>';
+    }
+  }
+
   function updatePhysicianSelection() {
     renderPhysicianSelector();
+    renderAssignmentBanner();
     render();
   }
 
@@ -1823,6 +1857,7 @@ attendingPersonId: Number(
   $('appointmentDate').value = state.date;
   bind();
   renderPhysicianSelector();
+  renderAssignmentBanner();
   showAccessStatus();
   // Access must be checked before editable controls are ever displayed.
   loadAccess().then(() => {
