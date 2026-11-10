@@ -725,3 +725,137 @@
 @media screen and (min-width: 850px) {
   .toolbar .physician-filter-field { flex: 0 0 205px; min-width: 0; }
 }
+/* MD-GPT ✦ Physician selector visual polish — CERT
+   Append AFTER the existing physician dropdown CSS in styles.css.
+   No JavaScript changes required. */
+
+.physician-filter-field,
+.physician-selector { position: relative; min-width: 0; }
+
+.physician-filter-field .physician-dropdown-button {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #b9cbe0;
+  border-radius: 7px;
+  background: #fff;
+  color: #24425f;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 1px 2px rgba(29,61,92,.05);
+}
+.physician-filter-field .physician-dropdown-button:hover,
+.physician-filter-field .physician-dropdown-button[aria-expanded="true"] {
+  border-color: #6e9bc7;
+  background: #f8fbff;
+}
+
+.physician-filter-field .physician-dropdown-panel {
+  box-sizing: border-box;
+  width: 340px;
+  max-width: calc(100vw - 30px);
+  max-height: min(510px, 72vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid #c9d8e8;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(25, 55, 86, .18);
+}
+.physician-filter-field .physician-dropdown-panel[hidden] { display: none !important; }
+
+.physician-filter-field .physician-dropdown-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 9px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e5edf5;
+}
+.physician-filter-field .physician-dropdown-actions button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid #c9d8e8;
+  border-radius: 6px;
+  background: #f1f6fc;
+  color: #244c75;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.physician-filter-field .physician-dropdown-actions button:hover { background: #e2effb; }
+
+.physician-filter-field .physician-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.physician-filter-field .physician-checkbox-item {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 9px;
+  border-radius: 7px;
+  color: #263d54;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.physician-filter-field .physician-checkbox-item:hover { background: #eef5fc; }
+
+/* Override the dashboard's general .field input sizing.
+   This fixes the giant orange checkbox and horizontal scrollbar. */
+.physician-filter-field .physician-checkbox-item input[type="checkbox"] {
+  appearance: auto;
+  -webkit-appearance: checkbox;
+  box-sizing: border-box;
+  display: inline-block;
+  flex: 0 0 16px;
+  width: 16px !important;
+  min-width: 16px !important;
+  max-width: 16px;
+  height: 16px !important;
+  min-height: 16px !important;
+  max-height: 16px;
+  margin: 0;
+  padding: 0 !important;
+  border-radius: 3px;
+  accent-color: #2563a6;
+  vertical-align: middle;
+}
+.physician-filter-field .physician-initials {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 24px;
+  padding: 2px 4px;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+.physician-filter-field .physician-checkbox-item > span:last-child {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+}
