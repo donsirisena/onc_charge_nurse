@@ -15,7 +15,50 @@
   <main class="page-container">
     <section class="toolbar no-print" aria-label="Appointment filters">
       <div class="field"><label for="appointmentDate">Appointment date</label><input id="appointmentDate" type="date"></div>
-      <div class="field"><label for="attendingFilter">Attending physician</label><select id="attendingFilter"><option value="all">All Attendings</option></select></div>
+      <!-- MD-GPT ✦ Physician Multi-Selection -->
+<div class="field physician-filter-field">
+
+  <label for="physicianDropdownButton">
+    Assigned Physicians
+  </label>
+
+  <div class="physician-selector">
+
+    <button
+      id="physicianDropdownButton"
+      type="button"
+      class="physician-dropdown-button"
+      aria-expanded="false"
+      aria-controls="physicianDropdownPanel">
+
+      All 9 Physicians Selected ▾
+
+    </button>
+
+    <div
+      id="physicianDropdownPanel"
+      class="physician-dropdown-panel"
+      hidden>
+
+      <div class="physician-dropdown-actions">
+        <button id="selectAllPhysicians" type="button">
+          Select All
+        </button>
+
+        <button id="clearPhysicianSelection" type="button">
+          Clear Saved Selection
+        </button>
+      </div>
+
+      <div id="physicianCheckboxList"
+           class="physician-checkbox-list">
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
       <div class="field search-field"><label for="searchBox">Search patient / MRN</label><input id="searchBox" type="search" placeholder="Search patient or MRN..."></div>
       <div class="toolbar-actions">
         <button id="refreshButton" type="button" class="secondary">↻ Refresh</button>
