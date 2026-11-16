@@ -185,7 +185,10 @@
     const m = String(a.apptDttm || '').match(/\b(\d{2}:\d{2})\b/);
     return m ? m[1] : '—';
   }
-  function notice(message, error) {
+  let noticeTimeout;
+  function notice(message, error, timeout) {
+    clearTimeout(noticeTimeout);
+    if (timeout) noticeTimeout = setTimeout(() => notice(''), timeout);
     const n = $('notice');
     n.textContent = message;
     n.className = 'notice' +
@@ -885,7 +888,7 @@ attendingPersonId: Number(
         throw new Error(String(result.MESSAGE || result.message || 'Save not confirmed'));
       }
       state.saved.set(String(id), { ...edit });
-      notice('Nurse comment and highlight saved.');
+      notice('Nurse comment and highlight saved.', false, 5000);
       loadPending();
     } catch (error) {
       notice('Save failed: ' + error.message + '. Your changes are retained.', true);
