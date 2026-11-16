@@ -577,10 +577,11 @@
 
 .nurse-report-table th,
 .nurse-report-table td {
-    padding: 4px 5px;
+    padding: 2px 3px;
     border: 1px solid #c8c8c8;
     text-align: left;
     vertical-align: top;
+    word-wrap: break-word;
     overflow-wrap: anywhere;
     line-height: 1.2;
 }
@@ -590,16 +591,14 @@
     font-weight: 700;
 }
 
-/* MD-GPT ✦ Nurse Comments Report - 8 columns */
-
-.nurse-report-table th:nth-child(1) { width: 12%; } /* Attending */
-.nurse-report-table th:nth-child(2) { width: 15%; } /* Patient Name */
-.nurse-report-table th:nth-child(3) { width: 7%;  } /* MRN */
-.nurse-report-table th:nth-child(4) { width: 18%; } /* Regimen */
-.nurse-report-table th:nth-child(5) { width: 9%;  } /* Appt Date */
-.nurse-report-table th:nth-child(6) { width: 5%;  } /* Time */
-.nurse-report-table th:nth-child(7) { width: 15%; } /* Resource */
-.nurse-report-table th:nth-child(8) { width: 19%; } /* Nursing Note */
+/* Seven patient columns; physician headings span the full table. */
+.nurse-report-table thead th:nth-child(1) { width: 17%; } /* Patient Name */
+.nurse-report-table thead th:nth-child(2) { width: 8%;  } /* MRN */
+.nurse-report-table thead th:nth-child(3) { width: 20%; } /* Regimen */
+.nurse-report-table thead th:nth-child(4) { width: 10%; } /* Appt Date */
+.nurse-report-table thead th:nth-child(5) { width: 6%;  } /* Time */
+.nurse-report-table thead th:nth-child(6) { width: 17%; } /* Resource */
+.nurse-report-table thead th:nth-child(7) { width: 22%; } /* Nursing Note */
 
 /* Print only the nurse comments report */
 @media print {
@@ -628,13 +627,13 @@
     }
 
     .nurse-report-print-sheet h1 {
-        font-size: 13pt;
-        margin: 0 0 3mm;
+        font-size: 10pt;
+        margin: 0 0 1mm;
     }
 
     .nurse-report-print-sheet p {
         font-size: 9pt;
-        margin: 0 0 4mm;
+        margin: 0 0 1mm;
     }
 
     .nurse-report-print-sheet .nurse-report-table {
@@ -658,9 +657,27 @@
         display: table-header-group;
     }
 
-    .nurse-report-print-sheet tr {
+    .nurse-report-print-sheet tbody {
+        break-inside: auto;
+        page-break-inside: auto;
+    }
+
+    /* Legacy page-break properties support older PowerChart print engines. */
+    .nurse-report-print-sheet .nurse-report-group-start {
         break-inside: avoid;
         page-break-inside: avoid;
+    }
+
+    .nurse-report-print-sheet .nurse-report-attending {
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+
+    /* Let long notes flow across pages instead of keeping patient rows whole. */
+    .nurse-report-print-sheet tr,
+    .nurse-report-print-sheet td {
+        break-inside: auto;
+        page-break-inside: auto;
     }
 }
 /* MD ✦

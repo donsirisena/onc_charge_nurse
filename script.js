@@ -1484,7 +1484,6 @@ attendingPersonId: Number(
 
   function nurseReportTable(rows) {
     const columns = [
-    ['ATTENDING', 'Attending'],
     ['PT_NAME', 'Patient Name'],
     ['MRN', 'MRN'],
     ['REGIMEN', 'Regimen'],
@@ -1494,9 +1493,27 @@ attendingPersonId: Number(
     ['NURSING_NOTE', 'Nursing Note']
   ];
 
+    // Collect in input order; sort only the physician groups.
+    const groups = [];
+    rows.forEach(r => {
+      const attending = String(r.ATTENDING ?? r.attending ?? '');
+      let group = groups.find(g => g.attending === attending);
+      if (!group) {
+        group = { attending, rows: [] };
+        groups.push(group);
+      }
+      group.rows.push(r);
+    });
+    groups.sort((a, b) => a.attending.localeCompare(b.attending));
+
+    const patientRow = r => '<tr>' +
+      columns.map(([key]) =>
+        '<td>' + esc(r[key] ?? r[key.toLowerCase()] ?? '') + '</td>'
+      ).join('') + '</tr>';
+
     return '<table class="nurse-report-table">' +
       '<colgroup>' +
-      [12, 15, 7, 18, 9, 5, 15, 19].map(w =>
+      [17, 8, 20, 10, 6, 17, 22].map(w =>
         '<col style="width:' + w + '%">'
       ).join('') +
       '</colgroup>' +
@@ -1504,15 +1521,17 @@ attendingPersonId: Number(
       columns.map(([, label]) =>
         '<th>' + esc(label) + '</th>'
       ).join('') +
-      '</tr></thead><tbody>' +
-      rows.map(r =>
-        '<tr>' +
-        columns.map(([key]) =>
-          '<td>' + esc(r[key] ?? r[key.toLowerCase()] ?? '') + '</td>'
-        ).join('') +
-        '</tr>'
-      ).join('') +
-      '</tbody></table>';
+      '</tr></thead>' +
+      groups.map(group =>
+        // Only this two-row body is kept together, never the whole group.
+        '<tbody class="nurse-report-group-start">' +
+        '<tr class="nurse-report-attending"><th colspan="7">' +
+        esc(group.attending || 'Unspecified attending') + '</th></tr>' +
+        patientRow(group.rows[0]) + '</tbody>' +
+        (group.rows.length > 1
+          ? '<tbody>' + group.rows.slice(1).map(patientRow).join('') + '</tbody>'
+          : '')
+      ).join('') + '</table>';
   }
 
   async function loadNurseReport() {
@@ -1545,12 +1564,7 @@ attendingPersonId: Number(
       state.nurseReportRows = rows;
       state.nurseReportLoadedDate = date;
 
-      const html = nurseReportTable(rows);
-      const temp = document.createElement('div');
-      temp.innerHTML = html;
-
-      $('nurseReportBody').innerHTML =
-        temp.querySelector('tbody').innerHTML;
+      $('nurseReportBody').innerHTML = nurseReportTable(rows);
 
       $('nurseReportStatus').textContent = rows.length
         ? rows.length + ' nurse comments for ' + displayDate(date)
