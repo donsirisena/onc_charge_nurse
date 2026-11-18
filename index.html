@@ -40,7 +40,7 @@
       aria-expanded="false"
       aria-controls="physicianDropdownPanel">
 
-      All 9 Physicians Selected ▾
+      Loading Assignments… ▾
 
     </button>
 
@@ -51,13 +51,15 @@
 
       <div class="physician-dropdown-actions">
         <button id="selectAllPhysicians" type="button">
-          Select All
+          Assign Available
         </button>
 
         <button id="clearPhysicianSelection" type="button">
-          Clear Saved Selection
+          Release Mine
         </button>
       </div>
+
+      <div id="physicianAssignmentStatus" class="physician-assignment-status" role="status" aria-live="polite"></div>
 
       <div id="physicianCheckboxList"
            class="physician-checkbox-list">
