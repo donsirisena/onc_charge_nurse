@@ -15,7 +15,6 @@
     pendingProgram: 'mrd_onc_nurse_notes_pending:group1',
     bloodSummaryProgram: 'mrd_onc_charge_nurse_bloodwork:group1',
     bloodDetailProgram: 'mrd_onc_charge_nurse_lab_detai:group1',
-    nurseReportProgram: 'mrd_onc_nurse_com_print_mpage:group1',
     readOnly: true, // Fail closed until CCL confirms editing access.
     autoRefreshMs: 180000,
     cclDateFormat: 'MM/DD/YYYY',
@@ -41,7 +40,6 @@
   ];
   const activePhysicians = () => ONCOLOGY_PHYSICIANS.filter(p => p.active);
 
-  const selectPhysiciansMessage = 'Select physicians in Assigned Physicians to view or print this report.';
   const $ = id => document.getElementById(id);
   const state = {
     appointments: [],
@@ -76,13 +74,7 @@
     bloodPatients: new Set(),
     bloodSummaryAvailable: false,
     bloodPatient: null,
-    bloodRequestVersion: 0,
-    nurseReportRows: [],
-    nurseReportLoadedDate: '',
-    nurseReportAssignmentScope: null,
-    nurseReportPrintReadyUntil: 0,
-    nurseReportVersion: 0,
-    nurseReportLoading: false
+    bloodRequestVersion: 0
   };
   const excludedTypes = new Set([
     'Chemo Clinic Lab Visit',
@@ -344,9 +336,6 @@
   async function refreshAssignments(afterSave = false) {
     if (state.assignmentRefresh) return state.assignmentRefresh;
     if (!state.accessChecked || (state.assignmentSaving && !afterSave)) return;
-    if (state.assignmentDate && state.assignmentDate !== todayLocal() && state.nurseReportLoadedDate) {
-      clearNurseReport('The clinic date changed. Click View Report to reload.');
-    }
 
     let selectionChanged = false;
     state.assignmentRefresh = (async () => {
@@ -357,7 +346,7 @@
           root = await cclCall(CONFIG.assignmentGetProgram, '^MINE^', 30000);
         } while (date !== todayLocal());
 
-        const rows = root.ASSIGNMENTS ?? root.assignments ?? [];
+        const { assignments: lowerRows = [], ASSIGNMENTS: rows = lowerRows } = root;
         const rawCount = root.QUAL ?? root.qual;
         const count = typeof rawCount === 'string' && /^\d+$/.test(rawCount) ? Number(rawCount) : rawCount;
         if (!Array.isArray(rows) || count !== rows.length) {
@@ -382,18 +371,12 @@
         state.selectedPhysicians = selected;
         state.assignmentDate = date;
         state.assignmentLoadError = '';
-        if (state.nurseReportLoadedDate && !reportAssignmentScopeMatches()) {
-          clearNurseReport(selected.size
-            ? 'Physician assignments changed. Click View Report to reload.'
-            : selectPhysiciansMessage + ' Then click View Report again.');
-        }
       } catch (error) {
         selectionChanged = !!state.assignmentDate;
         state.assignments.clear();
         state.selectedPhysicians.clear();
         state.assignmentDate = '';
         state.assignmentLoadError = 'Unable to load physician assignments: ' + error.message;
-        if (state.nurseReportLoadedDate) clearNurseReport(state.assignmentLoadError + '. Click View Report to retry.');
       }
     })().finally(() => {
       state.assignmentRefresh = null;
@@ -428,9 +411,6 @@
           );
           if (Number(root.SUCCESS ?? root.success) !== 1) {
             throw new Error(root.MESSAGE ?? root.message ?? 'Unable to save physician assignment.');
-          }
-          if (state.nurseReportLoadedDate) {
-            clearNurseReport('Physician assignments changed. Click View Report to reload.');
           }
         } catch (error) {
           state.assignmentSaveError = error.message;
@@ -1415,21 +1395,19 @@ attendingPersonId: Number(
       notice('Chart launch failed: ' + e.message, true);
     }
   }
-  // Existing print functionality
-  
- function selectedPrintList() {
-   const value = $('printAttending').value;
-   const q = state.search.toLowerCase();
-   const commentsOnly = $('printOnlyWithComments').checked;
+  function selectedPrintList() {
+    const value = $('printAttending').value;
+    const q = state.search.toLowerCase();
+    const commentsOnly = $('printOnlyWithComments').checked;
 
-   return state.appointments.filter(a =>
-     (value === 'all' ||
-       (value === 'current' ? matchesPhysicianSelection(a) :
-         String(a.attendingPersonId || a.attending) === value)) &&
-     (!q || a.ptName.toLowerCase().includes(q) || a.mrn.toLowerCase().includes(q)) &&
-     (!commentsOnly || Boolean(savedFor(a).note.trim()))
-   );
- }
+    return state.appointments.filter(a =>
+      (value === 'all' ||
+        (value === 'current' ? matchesPhysicianSelection(a) :
+          String(a.attendingPersonId || a.attending) === value)) &&
+      (!q || a.ptName.toLowerCase().includes(q) || a.mrn.toLowerCase().includes(q)) &&
+      (!commentsOnly || Boolean(savedFor(a).note.trim()))
+    );
+  }
 
   function printOptions() {
     return {
@@ -1444,7 +1422,7 @@ attendingPersonId: Number(
   function buildPrint() {
     const opts = printOptions();
     const list = selectedPrintList();
-    const groups = grouped(list);
+    const commentsReport = opts.layout === 'comments';
     const worksheet = opts.layout === 'worksheet';
     const printAttending = $('printAttending').value;
     const physicianLabel =
@@ -1454,7 +1432,8 @@ attendingPersonId: Number(
           ? physicianSelectionLabel()
           : $('printAttending').selectedOptions[0]?.textContent;
     const columns = [
-      'Time', 'Patient', 'MRN', 'Regimen / Plan', 'DoT'
+      'Time', 'Patient', 'MRN', 'Regimen / Plan',
+      commentsReport ? 'Resource' : 'DoT'
     ];
     if (opts.layout === 'detailed') {
       columns.push('Appointment type', 'Resource', 'Appt status');
@@ -1464,13 +1443,14 @@ attendingPersonId: Number(
     }
     if (opts.notes) columns.push('Nurse comments');
     if (worksheet) columns.push('Handwritten notes');
-    const widths = opts.layout === 'detailed'
-      ? [7, 15, 10, 26, 7, 17, 10, 8]
-      : [10, 21, 13, 42, 14];
-    const extra = columns.length - widths.length;
-    for (let i = 0; i < extra; i++) widths.push(14);
+    const widths = commentsReport ? [8, 19, 10, 25, 12] :
+      opts.layout === 'detailed' ? [7, 15, 10, 26, 7, 17, 10, 8] :
+      [10, 21, 13, 42, 14];
+    if (opts.statuses && opts.layout !== 'detailed') widths.push(14);
+    if (opts.notes) widths.push(commentsReport ? 27 : 14);
+    if (worksheet) widths.push(14);
     const total = widths.reduce((a, b) => a + b, 0);
-    const table = items =>
+    const table = body =>
       '<table class="print-table"><colgroup>' +
       widths.map(w =>
         '<col style="width:' +
@@ -1478,66 +1458,68 @@ attendingPersonId: Number(
       ).join('') +
       '</colgroup><thead><tr>' +
       columns.map(c => '<th>' + esc(c) + '</th>').join('') +
-      '</tr></thead><tbody>' +
-      items.map(a => {
-        const e = editsFor(a);
-        const cells = [
-          timeOf(a),
-          a.ptName,
-          a.mrn,
-          a.pplanName || a.regimenName || '',
-          a.dot || ''
-        ];
-        if (opts.layout === 'detailed') {
-          cells.push(
-            a.apptType, a.resource || '', a.apptStatus || ''
-          );
-        }
-        if (opts.statuses && opts.layout !== 'detailed') {
-          cells.push(a.apptStatus || '');
-        }
-        if (opts.notes) cells.push(e.note);
-        if (worksheet) cells.push('');
-        return '<tr class="' +
-          (opts.highlights && e.highlight
-            ? 'highlight-' + e.highlight : '') +
-          (worksheet ? ' worksheet-row' : '') +
-          '">' +
-          cells.map(v => '<td>' + esc(v) + '</td>').join('') +
-          '</tr>';
-      }).join('') +
-      '</tbody></table>';
-    let body = '';
-    if (
-      opts.layout === 'attending' ||
-      opts.layout === 'detailed' ||
-      opts.layout === 'worksheet'
-    ) {
-      body = groups.map(g =>
+      '</tr></thead>' + body + '</table>';
+    const row = a => {
+      const e = commentsReport ? savedFor(a) : editsFor(a);
+      const cells = [
+        timeOf(a),
+        a.ptName,
+        a.mrn,
+        a.pplanName || a.regimenName || '',
+        (commentsReport ? a.resource : a.dot) || ''
+      ];
+      if (opts.layout === 'detailed') {
+        cells.push(
+          a.apptType, a.resource || '', a.apptStatus || ''
+        );
+      }
+      if (opts.statuses && opts.layout !== 'detailed') {
+        cells.push(a.apptStatus || '');
+      }
+      if (opts.notes) cells.push(e.note);
+      if (worksheet) cells.push('');
+      return '<tr class="' +
+        (opts.highlights && e.highlight
+          ? 'highlight-' + e.highlight : '') +
+        (worksheet ? ' worksheet-row' : '') +
+        '">' +
+        cells.map(v => '<td>' + esc(v) + '</td>').join('') +
+        '</tr>';
+    };
+    let body;
+    if (commentsReport) {
+      const attendings = new Map();
+      list.forEach(a => {
+        const key = a.attendingPersonId || a.attending;
+        if (!attendings.has(key)) attendings.set(key, { name: a.attending, items: [] });
+        attendings.get(key).items.push(a);
+      });
+      body = table([...attendings.values()]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(({ name, items }) => {
+          items.sort((a, b) => a.apptDttm.localeCompare(b.apptDttm));
+          return '<tbody class="print-attending-start">' +
+            '<tr class="print-attending-heading"><th colspan="' + columns.length + '">' +
+            esc(name) + '</th></tr>' + row(items[0]) + '</tbody>' +
+            (items.length > 1 ? '<tbody>' + items.slice(1).map(row).join('') + '</tbody>' : '');
+        }).join(''));
+    } else {
+      body = grouped(list).map(g =>
         '<section class="print-group">' +
         '<h2>' + esc(g.name) + '</h2>' +
         g.types.map(t =>
           '<h3>' + esc(t.type) +
-          ' (' + t.items.length + ')</h3>' +
-          table(t.items)
-        ).join('') +
-        '</section>'
-      ).join('');
-    } else {
-      body = groups.map(g =>
-        '<section class="print-group">' +
-        '<h2>' + esc(g.name) + '</h2>' +
-        g.types.map(t =>
-          '<h3>' + esc(t.type) + '</h3>' +
-          table(t.items)
+          (opts.layout === 'simple' ? '' : ' (' + t.items.length + ')') + '</h3>' +
+          table('<tbody>' + t.items.map(row).join('') + '</tbody>')
         ).join('') +
         '</section>'
       ).join('');
     }
     $('printArea').innerHTML =
-      '<div class="print-sheet">' +
+      '<div class="print-sheet' + (commentsReport ? ' print-comments-sheet' : '') + '">' +
       '<h1>Oncology Clinic — ' +
       esc(({
+        comments: 'Nurse Comments Report',
         simple: 'Simple Daily Appointment List',
         detailed: 'Detailed Appointment List',
         attending: 'Appointments by Attending',
@@ -1549,235 +1531,17 @@ attendingPersonId: Number(
       ' · ' + esc(physicianLabel || 'All Attendings') +
       '</span>' +
       '<span>' + list.length +
-      ' appointments · Printed ' +
-      esc(new Date().toLocaleString('en-CA')) +
+      ' appointments' + (commentsReport ? '' :
+        ' · Printed ' + esc(new Date().toLocaleString('en-CA'))) +
       '</span>' +
       '</div>' +
       (list.length
         ? body
         : '<p>No appointments match the selected filters.</p>') +
       '<div class="print-footer">' +
-      'Oncology Clinic · Operational appointment list · ' +
+      (commentsReport ? '' : 'Oncology Clinic · Operational appointment list · ') +
       'Handle as confidential patient information' +
       '</div></div>';
-  }
- 
-  
-  /* Printable Nurse Comments Report */
-
-  function tomorrowLocal() {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return [
-      d.getFullYear(),
-      String(d.getMonth() + 1).padStart(2, '0'),
-      String(d.getDate()).padStart(2, '0')
-    ].join('-');
-  }
-
-  function nurseReportTable(rows) {
-    const columns = [
-    ['PT_NAME', 'Patient Name'],
-    ['MRN', 'MRN'],
-    ['REGIMEN', 'Regimen'],
-    ['APPT_DATE', 'Appt Date'],
-    ['APPT_TM', 'Time'],
-    ['RESOURCE', 'Resource'],
-    ['NURSING_NOTE', 'Nursing Note']
-  ];
-
-    // Collect in input order; sort only the physician groups.
-    const groups = [];
-    rows.forEach(r => {
-      const attending = String(r.ATTENDING ?? r.attending ?? '');
-      let group = groups.find(g => g.attending === attending);
-      if (!group) {
-        group = { attending, rows: [] };
-        groups.push(group);
-      }
-      group.rows.push(r);
-    });
-    groups.sort((a, b) => a.attending.localeCompare(b.attending));
-
-    const patientRow = r => '<tr>' +
-      columns.map(([key]) =>
-        '<td>' + esc(r[key] ?? r[key.toLowerCase()] ?? '') + '</td>'
-      ).join('') + '</tr>';
-
-    return '<table class="nurse-report-table">' +
-      '<colgroup>' +
-      [17, 8, 20, 10, 6, 17, 22].map(w =>
-        '<col style="width:' + w + '%">'
-      ).join('') +
-      '</colgroup>' +
-      '<thead><tr>' +
-      columns.map(([, label]) =>
-        '<th>' + esc(label) + '</th>'
-      ).join('') +
-      '</tr></thead>' +
-      groups.map(group =>
-        // Only this two-row body is kept together, never the whole group.
-        '<tbody class="nurse-report-group-start">' +
-        '<tr class="nurse-report-attending"><th colspan="7">' +
-        esc(group.attending || 'Unspecified attending') + '</th></tr>' +
-        patientRow(group.rows[0]) + '</tbody>' +
-        (group.rows.length > 1
-          ? '<tbody>' + group.rows.slice(1).map(patientRow).join('') + '</tbody>'
-          : '')
-      ).join('') + '</table>';
-  }
-
-  function clearNurseReport(message) {
-    ++state.nurseReportVersion;
-    state.nurseReportLoading = false;
-    state.nurseReportRows = [];
-    state.nurseReportLoadedDate = '';
-    state.nurseReportAssignmentScope = null;
-    state.nurseReportPrintReadyUntil = 0;
-    $('printNurseCommentsReport').textContent = 'Print Report';
-    $('nurseReportBody').innerHTML = '';
-    $('nurseReportStatus').textContent = message;
-    $('printNurseCommentsReport').disabled = true;
-    $('loadNurseCommentsReport').disabled = false;
-  }
-
-  async function loadNurseReport() {
-    const date = $('nurseReportDate').value;
-    if (!date) return;
-
-    clearNurseReport('Loading nurse comments…');
-    const version = state.nurseReportVersion;
-    state.nurseReportLoading = true;
-    $('loadNurseCommentsReport').disabled = true;
-
-    try {
-      if (state.assignmentSaving) throw new Error('Wait for the physician assignment save to finish, then click View Report.');
-      await refreshAssignments();
-      if (version !== state.nurseReportVersion) return;
-      if (!personnelKey(state.userId)) throw new Error('Logged-in personnel ID unavailable.');
-      if (!assignmentsCurrent()) throw new Error(state.assignmentLoadError || 'Physician assignments unavailable.');
-      if (!state.selectedPhysicians.size) {
-        $('nurseReportStatus').textContent = selectPhysiciansMessage;
-        return;
-      }
-
-      const root = await cclCall(
-        CONFIG.nurseReportProgram,
-        '^MINE^,' + cclString(formatPromptDate(date))
-      );
-
-      if (version !== state.nurseReportVersion) return;
-
-      if (state.assignmentRefresh) await state.assignmentRefresh;
-      if (version !== state.nurseReportVersion) return;
-      if (state.assignmentSaving || !assignmentsCurrent()) {
-        throw new Error(state.assignmentLoadError || 'Physician assignments changed. Click View Report to reload.');
-      }
-      if (!state.selectedPhysicians.size) {
-        $('nurseReportStatus').textContent = selectPhysiciansMessage;
-        return;
-      }
-      const comments = root.COMMENTS || root.comments || [];
-      if (!Array.isArray(comments)) {
-        throw new Error('Unexpected nurse comments report response');
-      }
-
-      const scope = { date: state.assignmentDate, ids: new Set(state.selectedPhysicians) };
-      const rows = comments.filter(row => {
-        const id = row.ATTENDING_PERSON_ID ?? row.attending_person_id;
-        if (id == null) throw new Error('The nurse comments CCL response is missing attending physician IDs.');
-        return scope.ids.has(personnelKey(id));
-      });
-      state.nurseReportAssignmentScope = scope;
-      state.nurseReportRows = rows;
-      state.nurseReportLoadedDate = date;
-
-      $('nurseReportBody').innerHTML = nurseReportTable(rows);
-
-      $('nurseReportStatus').textContent = rows.length
-        ? rows.length + ' nurse comments for ' + displayDate(date)
-        : 'No nurse comments found for ' + displayDate(date);
-
-      $('printNurseCommentsReport').disabled = !rows.length;
-
-    } catch (error) {
-      if (version !== state.nurseReportVersion) return;
-      $('nurseReportStatus').textContent =
-        'Unable to load nurse comments: ' + error.message;
-    } finally {
-      if (version === state.nurseReportVersion) {
-        state.nurseReportLoading = false;
-        $('loadNurseCommentsReport').disabled = false;
-      }
-    }
-  }
-
-  function reportAssignmentScopeMatches() {
-    const scope = state.nurseReportAssignmentScope;
-    return scope && assignmentsCurrent() && scope.date === state.assignmentDate &&
-      samePhysicians(scope.ids, state.selectedPhysicians);
-  }
-
-  async function printNurseReport() {
-    const date = $('nurseReportDate').value;
-    const button = $('printNurseCommentsReport');
-    const dialog = $('nurseCommentsReportDialog');
-    if (button.disabled || !dialog.open || state.nurseReportLoading ||
-        !state.nurseReportRows.length || date !== state.nurseReportLoadedDate) return;
-
-    if (state.assignmentSaving) {
-      state.nurseReportPrintReadyUntil = 0;
-      button.textContent = 'Print Report';
-      $('nurseReportStatus').textContent = 'Wait for the physician assignment save to finish, then click Print Report.';
-      return;
-    }
-    if (Date.now() >= state.nurseReportPrintReadyUntil || state.assignmentRefresh ||
-        !reportAssignmentScopeMatches()) {
-      state.nurseReportPrintReadyUntil = 0;
-      button.textContent = 'Print Report';
-      button.disabled = true;
-      $('nurseReportStatus').textContent = 'Checking physician assignments before printing…';
-      const version = state.nurseReportVersion;
-      const reportStillOpen = () => dialog.open && version === state.nurseReportVersion &&
-        date === $('nurseReportDate').value;
-
-      // A request already underway may predate the print attempt.
-      if (state.assignmentRefresh) await state.assignmentRefresh;
-      if (!reportStillOpen()) return;
-      await refreshAssignments();
-      if (!reportStillOpen()) return;
-
-      if (state.assignmentLoadError) {
-        clearNurseReport(state.assignmentLoadError + '. Click View Report to retry.');
-      } else if (!reportAssignmentScopeMatches()) {
-        clearNurseReport('Physician assignments changed. Click View Report to reload.');
-      } else {
-        // Keep the actual print call in a fresh user gesture.
-        state.nurseReportPrintReadyUntil = Date.now() + 15000;
-        $('nurseReportStatus').textContent = 'Assignments verified. Click Confirm Print within 15 seconds.';
-        button.textContent = 'Confirm Print';
-        button.disabled = false;
-      }
-      return;
-    }
-
-    state.nurseReportPrintReadyUntil = 0;
-    $('nurseReportPrintArea').innerHTML =
-      '<div class="nurse-report-print-sheet">' +
-      '<h1>Oncology — Nurse Comments Report</h1>' +
-      '<p>Appointment Date: ' + esc(displayDate(date)) + '</p>' +
-      nurseReportTable(state.nurseReportRows) +
-      '</div>';
-
-    // Keep the existing dashboard print layout separate.
-    document.body.classList.add('printing-nurse-report');
-
-    $('nurseCommentsReportDialog').close();
-
-    window.print();
-
-    // Do not clear the print area here: some embedded browsers
-    // return from window.print() before printing finishes.
   }
 
   // Load appointments
@@ -1903,37 +1667,6 @@ attendingPersonId: Number(
     });
     
     
-    // Nurse Comments Report controls
-    $('nurseCommentsReportButton').addEventListener('click', () => {
-      const date = tomorrowLocal();
-      $('nurseReportDate').value = date;
-
-      const dialog = $('nurseCommentsReportDialog');
-      if (!dialog.open) dialog.showModal();
-
-      loadNurseReport();
-    });
-
-    $('nurseReportDate').addEventListener('change', () => {
-      clearNurseReport('Click View Report to load the selected date.');
-    });
-
-    $('loadNurseCommentsReport').addEventListener(
-      'click', loadNurseReport
-    );
-
-    $('printNurseCommentsReport').addEventListener(
-      'click', printNurseReport
-    );
-
-    $('closeNurseCommentsReport').addEventListener(
-      'click', () => $('nurseCommentsReportDialog').close()
-    );
-
-    $('doneNurseCommentsReport').addEventListener(
-      'click', () => $('nurseCommentsReportDialog').close()
-    );
-
     $('closeBloodResults').addEventListener('click', closeBloodDialog);
     $('doneBloodResults').addEventListener('click', closeBloodDialog);
     $('refreshBloodResults').addEventListener('click', loadBloodDetails);
@@ -2017,16 +1750,64 @@ attendingPersonId: Number(
       'scroll', closePalette, true
     );
     const dialog = $('printDialog');
-    $('printOptionsButton').addEventListener(
-      'click', () => dialog.showModal()
-    );
+    const printStatus = $('printAssignmentStatus');
+    const printActions = [$('previewPrint'), $('doPrint')];
+    let printSession = 0;
+    let printRefreshPending = false;
+
+    function withPrintAssignments(action, status, stillActive, previewButton) {
+      if (printRefreshPending || !stillActive()) return;
+      status.textContent = '';
+      if ($('printAttending').value !== 'current') {
+        action();
+        return;
+      }
+      if (state.assignmentSaving || !personnelKey(state.userId)) {
+        status.textContent = state.assignmentSaving
+          ? 'Wait for the physician assignment save to finish, then try again.'
+          : 'Unable to verify physician assignments. Logged-in personnel ID unavailable.';
+        return;
+      }
+
+      // Share any assignment GET already in progress and lock both print entry points.
+      printRefreshPending = true;
+      const buttons = previewButton ? [...printActions, previewButton] : printActions;
+      buttons.forEach(button => { button.disabled = true; });
+      status.textContent = 'Refreshing physician assignments…';
+      refreshAssignments().then(() => {
+        if (!stillActive()) return;
+        if (!assignmentsCurrent() || state.assignmentSaving) {
+          status.textContent = state.assignmentLoadError ||
+            'Unable to verify current physician assignments. Try again.';
+          if (previewButton) $('printArea').querySelector('.print-sheet')?.remove();
+          return;
+        }
+        status.textContent = '';
+        // If the filter changed while waiting, let the user choose the action again.
+        if ($('printAttending').value === 'current') action();
+      }).finally(() => {
+        printRefreshPending = false;
+        buttons.forEach(button => { button.disabled = false; });
+      });
+    }
+
+    function withPrintOptions(action) {
+      const session = printSession;
+      withPrintAssignments(action, printStatus, () => dialog.open && printSession === session);
+    }
+
+    $('printOptionsButton').addEventListener('click', () => {
+      printSession++;
+      printStatus.textContent = '';
+      dialog.showModal();
+    });
     $('closePrint').addEventListener(
       'click', () => dialog.close()
     );
     $('cancelPrint').addEventListener(
       'click', () => dialog.close()
     );
-    $('previewPrint').addEventListener('click', () => {
+    $('previewPrint').addEventListener('click', () => withPrintOptions(() => {
       buildPrint();
       const printArea = $('printArea');
       const actions = document.createElement('div');
@@ -2038,10 +1819,14 @@ attendingPersonId: Number(
       printButton.type = 'button';
       printButton.className = 'primary';
       printButton.textContent = '▣ Print';
-      printButton.addEventListener('click', () => {
-      document.body.classList.remove('printing-nurse-report');
-      window.print();
-    });
+      const previewStatus = document.createElement('div');
+      previewStatus.className = 'no-print print-assignment-status';
+      previewStatus.setAttribute('role', 'status');
+      printButton.addEventListener('click', () => withPrintAssignments(() => {
+        buildPrint();
+        printArea.prepend(toolbar, previewStatus);
+        window.print();
+      }, previewStatus, () => toolbar.isConnected && !dialog.open, printButton));
 
       const closeButton = document.createElement('button');
       closeButton.id = 'closePrintPreview';
@@ -2065,17 +1850,17 @@ attendingPersonId: Number(
       label.style.cssText = 'font-size:14px;color:#1d3d5c;white-space:nowrap;';
       toolbar.appendChild(label);
       toolbar.appendChild(actions);
-      printArea.insertBefore(toolbar, printArea.firstChild);
+      printArea.prepend(toolbar, previewStatus);
       document.body.classList.add('print-preview-visible');
       dialog.close();
       printArea.scrollIntoView({ behavior: 'smooth' });
-    });
-    $('doPrint').addEventListener('click', () => {
+    }));
+    $('doPrint').addEventListener('click', () => withPrintOptions(() => {
       buildPrint();
+      document.body.classList.remove('print-preview-visible');
       dialog.close();
-      document.body.classList.remove('printing-nurse-report');
       window.print();
-    });
+    }));
     $('printForm').addEventListener(
       'submit', e => e.preventDefault()
     );
@@ -2093,9 +1878,6 @@ attendingPersonId: Number(
     loadPending();
   });
 
-  window.addEventListener('afterprint', () => {
-    document.body.classList.remove('printing-nurse-report');
-  });
   window.addEventListener('beforeunload', e => {
     if (!hasUnsaved()) return;
     e.preventDefault();
@@ -2120,7 +1902,6 @@ attendingPersonId: Number(
       document.hidden ||
       $('printDialog').open ||
       $('pendingCommentsDialog').open ||
-      $('nurseCommentsReportDialog').open ||
       $('bloodResultsDialog').open
     ) {
       return;

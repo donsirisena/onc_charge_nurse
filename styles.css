@@ -444,6 +444,9 @@
   .pending-comment-date { margin-left: auto; }
 }
 /* Fix Print Preview button alignment */
+.print-assignment-status { margin: 8px 0; font-size: 12px; }
+.print-assignment-status:empty { display: none; }
+
 .print-preview-actions {
     display: flex !important;
     align-items: center !important;
@@ -498,197 +501,27 @@
     padding: 6px 10px !important;
 }
 
-/* MD-GPT ✦ Nurse Comments Report */
+.print-sheet .print-attending-heading th { padding: 3px 4px; background: #e9edf2; }
+.print-comments-sheet .print-table td { white-space: pre-wrap; }
+.print-comments-sheet .print-table th,
+.print-comments-sheet .print-table td { padding: 2px 4px; line-height: 1.2; }
 
-/* Report popup */
-.nurse-report-dialog {
-    width: min(1500px, 98vw);
-    max-width: 1500px;
-    height: min(88vh, 900px);
-    max-height: 88vh;
-    padding: 0;
-    border: 1px solid #b9cde1;
-    border-radius: 10px;
-    background: #f0f6fc;
-    color: #1b2939;
-    box-shadow: 0 20px 60px #112f5047;
-    flex-direction: column;
-}
-
-.nurse-report-dialog[open] {
-    display: flex;
-}
-
-.nurse-report-dialog::backdrop {
-    background: #0f233c7a;
-}
-
-.nurse-report-dialog .dialog-heading {
-    flex: 0 0 auto;
-    padding: 12px 18px;
-    background: #dceaf7;
-    border-bottom: 1px solid #c6d8e9;
-}
-
-.nurse-report-dialog .dialog-heading h2 {
-    margin: 0;
-    font-size: 17px;
-    color: #1d3d5c;
-}
-
-.nurse-report-toolbar {
-    display: flex;
-    align-items: flex-end;
-    gap: 10px;
-    padding: 12px 18px;
-    flex-wrap: wrap;
-}
-
-#nurseReportStatus {
-    padding: 0 18px 8px;
-}
-
-.nurse-report-scroll {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
-    margin: 0 15px;
-    background: white;
-    border: 1px solid #d4e0ed;
-}
-
-.nurse-report-dialog > .dialog-actions {
-    flex: 0 0 auto;
-    margin: 0;
-    padding: 10px 18px;
-    background: #e8f1fa;
-    border-top: 1px solid #d5e2ef;
-}
-
-/* Compact table */
-.nurse-report-table {
-    width: 100%;
-    table-layout: fixed;
-    border-collapse: collapse;
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 11px;
-    color: #111;
-}
-
-.nurse-report-table th,
-.nurse-report-table td {
-    padding: 2px 3px;
-    border: 1px solid #c8c8c8;
-    text-align: left;
-    vertical-align: top;
-    word-wrap: break-word;
-    overflow-wrap: anywhere;
-    line-height: 1.2;
-}
-
-.nurse-report-table th {
-    background: #e8eef5;
-    font-weight: 700;
-}
-
-/* Seven patient columns; physician headings span the full table. */
-.nurse-report-table thead th:nth-child(1) { width: 17%; } /* Patient Name */
-.nurse-report-table thead th:nth-child(2) { width: 8%;  } /* MRN */
-.nurse-report-table thead th:nth-child(3) { width: 20%; } /* Regimen */
-.nurse-report-table thead th:nth-child(4) { width: 10%; } /* Appt Date */
-.nurse-report-table thead th:nth-child(5) { width: 6%;  } /* Time */
-.nurse-report-table thead th:nth-child(6) { width: 17%; } /* Resource */
-.nurse-report-table thead th:nth-child(7) { width: 22%; } /* Nursing Note */
-
-/* Print only the nurse comments report */
 @media print {
+    .print-sheet h1 { font-size: 13pt; margin-bottom: 2px; }
+    .print-sheet .print-meta { font-size: 9pt; margin-bottom: 5px; }
+    .print-sheet h2 { font-size: 10pt; margin: 7px 0 3px; padding: 3px 5px; }
+    .print-sheet h3 { font-size: 9pt; margin: 5px 0 2px; }
+    .print-sheet h2, .print-sheet h3 { page-break-after: avoid; break-after: avoid; }
+    .print-sheet .print-table th, .print-sheet .print-table td { padding: 2px 4px; line-height: 1.2; }
+    .print-sheet .worksheet-row td { padding-bottom: 27px; }
+    .print-sheet .print-footer { margin-top: 6px; font-size: 8pt; }
 
-    body.printing-nurse-report #printArea {
-        display: none !important;
-    }
-
-    body.printing-nurse-report #nurseReportPrintArea {
-        display: block !important;
-        width: 100%;
-        padding: 0 !important;
-        margin: 0 !important;
-        border: 0 !important;
-        overflow: visible !important;
-    }
-
-    body:not(.printing-nurse-report) #nurseReportPrintArea {
-        display: none !important;
-    }
-
-    .nurse-report-print-sheet {
-        font-family: Arial, Helvetica, sans-serif;
-        color: #000;
-        background: #fff;
-    }
-
-    .nurse-report-print-sheet h1 {
-        font-size: 10pt;
-        margin: 0 0 1mm;
-    }
-
-    .nurse-report-print-sheet p {
-        font-size: 9pt;
-        margin: 0 0 1mm;
-    }
-
-    .nurse-report-print-sheet .nurse-report-table {
-        width: 100%;
-        table-layout: fixed;
-        font-size: 7.5pt;
-    }
-
-    .nurse-report-print-sheet .nurse-report-table th,
-    .nurse-report-print-sheet .nurse-report-table td {
-        padding: 2px 3px;
-        line-height: 1.15;
-        border: 1px solid #aaa;
-    }
-
-    .nurse-report-print-sheet .nurse-report-table th {
-        background: white !important;
-    }
-
-    .nurse-report-print-sheet thead {
-        display: table-header-group;
-    }
-
-    .nurse-report-print-sheet tbody {
-        break-inside: auto;
-        page-break-inside: auto;
-    }
-
-    /* Legacy page-break properties support older PowerChart print engines. */
-    .nurse-report-print-sheet .nurse-report-group-start {
-        break-inside: avoid;
-        page-break-inside: avoid;
-    }
-
-    .nurse-report-print-sheet .nurse-report-attending {
-        break-after: avoid;
-        page-break-after: avoid;
-    }
-
-    /* Let long notes flow across pages instead of keeping patient rows whole. */
-    .nurse-report-print-sheet tr,
-    .nurse-report-print-sheet td {
-        break-inside: auto;
-        page-break-inside: auto;
-    }
+    .print-comments-sheet .print-table { font-size: 8pt; }
+    .print-comments-sheet .print-table tr { page-break-inside: auto; break-inside: auto; }
+    .print-comments-sheet .print-attending-start { page-break-inside: avoid; break-inside: avoid; }
+    .print-comments-sheet .print-attending-heading { page-break-after: avoid; break-after: avoid; }
 }
-/* MD ✦
-   Keep the Nurse Comments printable area hidden
-   during normal dashboard viewing.
-*/
-@media screen {
-    #nurseReportPrintArea {
-        display: none !important;
-    }
-}
+
 /* MD-GPT ✦ Hospital admission indicators */
 
 .hospital-indicator {
