@@ -809,6 +809,15 @@
 }
 .physician-filter-field .physician-dropdown-actions button:hover { background: #e2effb; }
 
+.physician-assignment-status {
+  margin: 0 0 8px;
+  color: #872f2f;
+  font-size: 12px;
+}
+.physician-assignment-status:empty { display: none; }
+.physician-filter-field .physician-checkbox-item.physician-unavailable { cursor: default; }
+.physician-unavailable small { color: #526c86; white-space: nowrap; }
+
 .physician-filter-field .physician-checkbox-list {
   display: flex;
   flex-direction: column;

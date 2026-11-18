@@ -9,6 +9,8 @@
     cclProgram: 'mrd_onc_charge_nurse_mpage:group1',
     notesGetProgram: 'mrd_onc_nurse_notes_get:group1',
     notesSaveProgram: 'mrd_onc_nurse_notes_save:group1',
+    assignmentGetProgram: 'mrd_onc_charge_assign_get:group1',
+    assignmentSaveProgram: 'mrd_onc_charge_assign_save:group1',
     accessProgram: 'mrd_onc_charge_nurse_access:group1',
     pendingProgram: 'mrd_onc_nurse_notes_pending:group1',
     bloodSummaryProgram: 'mrd_onc_charge_nurse_bloodwork:group1',
@@ -38,8 +40,8 @@
     { id: 9168257, name: 'Jeffrey Myers', initials: 'JM', color: '#EF4444', active: true }
   ];
   const activePhysicians = () => ONCOLOGY_PHYSICIANS.filter(p => p.active);
-  const allPhysicianIds = () => new Set(activePhysicians().map(p => String(p.id)));
 
+  const selectPhysiciansMessage = 'Select physicians in Assigned Physicians to view or print this report.';
   const $ = id => document.getElementById(id);
   const state = {
     appointments: [],
@@ -47,7 +49,13 @@
     accessChecked: false,
     userId: 0,
     userName: '',
-    selectedPhysicians: allPhysicianIds(),
+    selectedPhysicians: new Set(),
+    assignments: new Map(),
+    assignmentDate: '',
+    assignmentRefresh: null,
+    assignmentSaving: false,
+    assignmentLoadError: '',
+    assignmentSaveError: '',
     search: '',
     date: '',
     collapsed: new Set(),
@@ -71,6 +79,8 @@
     bloodRequestVersion: 0,
     nurseReportRows: [],
     nurseReportLoadedDate: '',
+    nurseReportAssignmentScope: null,
+    nurseReportPrintReadyUntil: 0,
     nurseReportVersion: 0,
     nurseReportLoading: false
   };
@@ -294,7 +304,8 @@
     if (str.includes('^')) throw new Error('The ^ character is not supported in nurse comments.');
     return '^' + str + '^';
   }
-  function cclCall(program, args) {
+  function cclCall(program, args, timeoutMs) {
+    let timer;
     return new Promise((resolve, reject) => {
       const request = getCclRequest();
       if (!request) return reject(new Error('XMLCCLREQUEST unavailable'));
@@ -312,55 +323,126 @@
           } catch (error) { reject(error); }
         };
         request.open('GET', program, true);
+        if (timeoutMs) timer = setTimeout(() => reject(new Error('CCL request timed out')), timeoutMs);
         request.send(args);
       } catch (error) { reject(error); }
+    }).finally(() => clearTimeout(timer));
+  }
+  function personnelKey(value) {
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? String(id) : '';
+  }
+
+  function assignmentsCurrent() {
+    return state.assignmentDate === todayLocal() && !state.assignmentLoadError;
+  }
+
+  function samePhysicians(first, second) {
+    return first.size === second.size && [...first].every(id => second.has(id));
+  }
+
+  async function refreshAssignments(afterSave = false) {
+    if (state.assignmentRefresh) return state.assignmentRefresh;
+    if (!state.accessChecked || (state.assignmentSaving && !afterSave)) return;
+    if (state.assignmentDate && state.assignmentDate !== todayLocal() && state.nurseReportLoadedDate) {
+      clearNurseReport('The clinic date changed. Click View Report to reload.');
+    }
+
+    let selectionChanged = false;
+    state.assignmentRefresh = (async () => {
+      try {
+        let date, root;
+        do {
+          date = todayLocal();
+          root = await cclCall(CONFIG.assignmentGetProgram, '^MINE^', 30000);
+        } while (date !== todayLocal());
+
+        const rows = root.ASSIGNMENTS ?? root.assignments ?? [];
+        const rawCount = root.QUAL ?? root.qual;
+        const count = typeof rawCount === 'string' && /^\d+$/.test(rawCount) ? Number(rawCount) : rawCount;
+        if (!Array.isArray(rows) || count !== rows.length) {
+          throw new Error('Unexpected physician assignment response');
+        }
+        const assignments = new Map();
+        const selected = new Set();
+        const nurseId = personnelKey(state.userId);
+        for (const row of rows) {
+          const id = personnelKey(row.PHYSICIAN_ID ?? row.physician_id);
+          const owner = personnelKey(row.NURSE_PRSNL_ID ?? row.nurse_prsnl_id);
+          if (!id || !owner || assignments.has(id)) {
+            throw new Error('Invalid physician assignment record');
+          }
+          assignments.set(id, { owner, name: String(row.NURSE_NAME ?? row.nurse_name ?? '').trim() });
+          if (owner === nurseId) selected.add(id);
+        }
+
+        selectionChanged = state.assignmentDate !== date ||
+          !samePhysicians(selected, state.selectedPhysicians);
+        state.assignments = assignments;
+        state.selectedPhysicians = selected;
+        state.assignmentDate = date;
+        state.assignmentLoadError = '';
+        if (state.nurseReportLoadedDate && !reportAssignmentScopeMatches()) {
+          clearNurseReport(selected.size
+            ? 'Physician assignments changed. Click View Report to reload.'
+            : selectPhysiciansMessage + ' Then click View Report again.');
+        }
+      } catch (error) {
+        selectionChanged = !!state.assignmentDate;
+        state.assignments.clear();
+        state.selectedPhysicians.clear();
+        state.assignmentDate = '';
+        state.assignmentLoadError = 'Unable to load physician assignments: ' + error.message;
+        if (state.nurseReportLoadedDate) clearNurseReport(state.assignmentLoadError + '. Click View Report to retry.');
+      }
+    })().finally(() => {
+      state.assignmentRefresh = null;
+      renderPhysicianSelector();
+      renderAssignmentBanner();
+      if (selectionChanged) render();
     });
-  }
-  // MD-GPT ✦ Per-user physician preferences (IDs only; no patient data).
-  // Browser-local storage may not persist across PowerChart workstations.
-  function physicianStorageKey() {
-    return Number.isSafeInteger(state.userId) && state.userId > 0
-      ? 'nygh_onc_charge_physicians_v1_' + state.userId
-      : null;
+    renderPhysicianSelector();
+    return state.assignmentRefresh;
   }
 
-  function restorePhysicianSelection() {
-    // Never use another user's selections before the access CCL identifies us.
-    state.selectedPhysicians = allPhysicianIds();
-    const key = physicianStorageKey();
-    if (!key) return;
-    try {
-      const raw = window.localStorage.getItem(key);
-      if (raw === null) return; // First visit: all nine selected.
-      const ids = JSON.parse(raw);
-      if (!Array.isArray(ids) || !ids.every(id => /^\d+$/.test(String(id)))) return;
-      const valid = allPhysicianIds();
-      state.selectedPhysicians = new Set(ids.map(String).filter(id => valid.has(id)));
-    } catch (error) {
-      // Embedded browser may disable localStorage; remain usable in memory.
-      console.warn('Unable to restore physician preferences:', error);
+  async function changeAssignments(ids, action) {
+    if (state.assignmentSaving || state.assignmentRefresh || CONFIG.readOnly ||
+        !personnelKey(state.userId) || !assignmentsCurrent()) {
+      renderPhysicianSelector();
+      if (state.accessChecked && !assignmentsCurrent() && !state.assignmentSaving) refreshAssignments();
+      return;
     }
-  }
 
-  function savePhysicianSelection() {
-    const key = physicianStorageKey();
-    if (!key) return;
+    state.assignmentSaving = true;
+    state.assignmentSaveError = '';
+    const date = state.assignmentDate;
+    renderPhysicianSelector();
     try {
-      window.localStorage.setItem(key, JSON.stringify([...state.selectedPhysicians]));
-    } catch (error) {
-      console.warn('Unable to save physician preferences:', error);
-      notice('Physician selection changed, but browser storage is unavailable; it may reset on reopening.', true);
-    }
-  }
-
-  function clearSavedPhysicianSelection() {
-    const key = physicianStorageKey();
-    if (!key) return;
-    try {
-      window.localStorage.removeItem(key);
-    } catch (error) {
-      console.warn('Unable to clear physician preferences:', error);
-      notice('Unable to clear saved physician preferences in browser storage.', true);
+      for (const id of ids) {
+        if (!assignmentsCurrent() || state.assignmentDate !== date) break;
+        const eligible = action === 'ASSIGN' ? !state.assignments.has(id) : state.selectedPhysicians.has(id);
+        if (!eligible) continue;
+        try {
+          const root = await cclCall(
+            CONFIG.assignmentSaveProgram, '^MINE^,' + id + ',' + cclString(action), 30000
+          );
+          if (Number(root.SUCCESS ?? root.success) !== 1) {
+            throw new Error(root.MESSAGE ?? root.message ?? 'Unable to save physician assignment.');
+          }
+          if (state.nurseReportLoadedDate) {
+            clearNurseReport('Physician assignments changed. Click View Report to reload.');
+          }
+        } catch (error) {
+          state.assignmentSaveError = error.message;
+          renderPhysicianSelector();
+        }
+        await refreshAssignments(true);
+        if (state.assignmentSaveError) break;
+      }
+      if (date !== todayLocal() && !assignmentsCurrent()) await refreshAssignments(true);
+    } finally {
+      state.assignmentSaving = false;
+      renderPhysicianSelector();
     }
   }
 
@@ -393,7 +475,6 @@
     state.accessChecked = false;
     state.userId = 0;
     state.userName = '';
-    state.selectedPhysicians = allPhysicianIds();
     renderPhysicianSelector();
     renderAssignmentBanner();
     closePalette();
@@ -408,15 +489,11 @@
       state.accessLevel = canEdit ? (isAdmin && level === 'ADMIN' ? 'ADMIN' : 'EDITOR') : 'READ_ONLY';
       state.userId = Number(root.USER_ID ?? root.user_id ?? 0);
       state.userName = String(root.USER_NAME ?? root.user_name ?? '').trim();
-      restorePhysicianSelection();
-      renderPhysicianSelector();
     } catch (error) {
       CONFIG.readOnly = true;
       state.accessLevel = 'READ_ONLY';
       state.userId = 0;
       state.userName = '';
-      state.selectedPhysicians = allPhysicianIds();
-      renderPhysicianSelector();
       // Do not grant access when CCL is unavailable or returns malformed JSON.
       notice('Access verification unavailable. Dashboard is read-only.', true);
     } finally {
@@ -908,15 +985,16 @@ attendingPersonId: Number(
   // MD-GPT ✦ When all active physicians are checked, preserve the original
   // All Attendings behaviour (including unexpected/out-of-roster attendings).
   function allPhysiciansSelected() {
-    return activePhysicians().every(p => state.selectedPhysicians.has(String(p.id)));
+    return assignmentsCurrent() && activePhysicians().every(p => state.selectedPhysicians.has(String(p.id)));
   }
 
   function matchesPhysicianSelection(a) {
     return allPhysiciansSelected() ||
-      state.selectedPhysicians.has(String(a.attendingPersonId));
+      (assignmentsCurrent() && state.selectedPhysicians.has(String(a.attendingPersonId)));
   }
 
   function physicianSelectionLabel() {
+    if (!assignmentsCurrent()) return 'Physician Assignments Unavailable';
     const count = activePhysicians().filter(p => state.selectedPhysicians.has(String(p.id))).length;
     return allPhysiciansSelected() ? 'All Attendings' :
       count === 0 ? 'No Physicians Selected' :
@@ -958,17 +1036,35 @@ attendingPersonId: Number(
 
   function renderPhysicianSelector() {
     const doctors = activePhysicians();
-    const selectedCount = doctors.filter(p => state.selectedPhysicians.has(String(p.id))).length;
-    $('physicianDropdownButton').textContent =
-      selectedCount === doctors.length ? 'All ' + doctors.length + ' Physicians Selected ▾' :
-      selectedCount + ' of ' + doctors.length + ' Physicians Selected ▾';
-    $('physicianCheckboxList').innerHTML = doctors.map(p =>
-      '<label class="physician-checkbox-item">' +
-      '<input type="checkbox" data-physician-id="' + p.id + '" ' +
-      (state.selectedPhysicians.has(String(p.id)) ? 'checked' : '') + '>' +
-      '<span class="physician-initials" style="background:' + p.color + '">' + esc(p.initials) + '</span>' +
-      '<span>' + esc(p.name) + '</span></label>'
-    ).join('');
+    const current = assignmentsCurrent();
+    const nurseId = personnelKey(state.userId);
+    const locked = !current || state.assignmentRefresh || state.assignmentSaving || CONFIG.readOnly || !nurseId;
+    const selectedCount = current ? doctors.filter(p => state.selectedPhysicians.has(String(p.id))).length : 0;
+    $('physicianDropdownButton').textContent = current
+      ? selectedCount + ' of ' + doctors.length + ' Physicians Selected ▾'
+      : (state.assignmentLoadError ? 'Assignments Unavailable ▾' : 'Loading Assignments… ▾');
+    $('selectAllPhysicians').disabled = !!locked || doctors.every(p => state.assignments.has(String(p.id)));
+    $('clearPhysicianSelection').disabled = !!locked || !selectedCount;
+    $('physicianAssignmentStatus').textContent = [
+      state.assignmentSaveError,
+      state.assignmentLoadError || (state.accessChecked && !nurseId ? 'Logged-in personnel ID unavailable.' : '')
+    ].filter(Boolean).join(' ');
+    $('physicianCheckboxList').innerHTML = doctors.map(p => {
+      const id = String(p.id);
+      const assignment = current && state.assignments.get(id);
+      const unavailable = assignment && assignment.owner !== nurseId;
+      const initials = unavailable && assignment.name.split(/[\s,]+/).filter(Boolean)
+        .slice(0, 2).map(word => word[0].toUpperCase()).join('');
+      return '<label class="physician-checkbox-item' + (unavailable ? ' physician-unavailable' : '') + '">' +
+        '<input type="checkbox" data-physician-id="' + id + '"' +
+        (current && state.selectedPhysicians.has(id) ? ' checked' : '') +
+        (locked || unavailable ? ' disabled' : '') + '>' +
+        '<span class="physician-initials" style="background:' + p.color + '">' + esc(p.initials) + '</span>' +
+        '<span>' + esc(p.name) + (unavailable
+          ? ' <small title="' + esc(assignment.name || 'Another nurse') + '">Assigned' +
+            (initials ? ' · ' + esc(initials) : '') + '</small>'
+          : '') + '</span></label>';
+    }).join('');
   }
 
   // MD-GPT ✦ Compact identity and assignment row; no patient data here.
@@ -978,7 +1074,7 @@ attendingPersonId: Number(
     const role = state.accessLevel === 'ADMIN' ? 'CI Admin' :
       state.accessLevel === 'EDITOR' ? 'Charge Nurse' : 'Viewer';
     const name = state.userName || (state.accessChecked ? 'Name unavailable' : 'Checking user…');
-    const selected = activePhysicians().filter(p => state.selectedPhysicians.has(String(p.id)));
+    const selected = activePhysicians().filter(p => assignmentsCurrent() && state.selectedPhysicians.has(String(p.id)));
     const nurse = banner.querySelector('[data-nurse-identity]');
     const doctors = banner.querySelector('[data-assigned-physicians]');
     if (nurse) {
@@ -990,15 +1086,9 @@ attendingPersonId: Number(
         '<span class="assignment-physician-badge" style="background:' + p.color +
         '" title="' + esc(p.name) + '" aria-label="' + esc(p.name) + '">' +
         esc(p.initials) + '</span>'
-      ).join('') : '<span class="assignment-none">None selected</span>';
+      ).join('') : '<span class="assignment-none">' +
+        (assignmentsCurrent() ? 'None selected' : state.assignmentLoadError ? 'Unavailable' : 'Loading…') + '</span>';
     }
-  }
-
-  function updatePhysicianSelection() {
-    savePhysicianSelection();
-    renderPhysicianSelector();
-    renderAssignmentBanner();
-    render();
   }
 
   function grouped(list) {
@@ -1537,21 +1627,40 @@ attendingPersonId: Number(
       ).join('') + '</table>';
   }
 
+  function clearNurseReport(message) {
+    ++state.nurseReportVersion;
+    state.nurseReportLoading = false;
+    state.nurseReportRows = [];
+    state.nurseReportLoadedDate = '';
+    state.nurseReportAssignmentScope = null;
+    state.nurseReportPrintReadyUntil = 0;
+    $('printNurseCommentsReport').textContent = 'Print Report';
+    $('nurseReportBody').innerHTML = '';
+    $('nurseReportStatus').textContent = message;
+    $('printNurseCommentsReport').disabled = true;
+    $('loadNurseCommentsReport').disabled = false;
+  }
+
   async function loadNurseReport() {
     const date = $('nurseReportDate').value;
     if (!date) return;
 
-    const version = ++state.nurseReportVersion;
+    clearNurseReport('Loading nurse comments…');
+    const version = state.nurseReportVersion;
     state.nurseReportLoading = true;
-    state.nurseReportRows = [];
-    state.nurseReportLoadedDate = '';
-
-    $('nurseReportBody').innerHTML = '';
-    $('nurseReportStatus').textContent = 'Loading nurse comments…';
-    $('printNurseCommentsReport').disabled = true;
     $('loadNurseCommentsReport').disabled = true;
 
     try {
+      if (state.assignmentSaving) throw new Error('Wait for the physician assignment save to finish, then click View Report.');
+      await refreshAssignments();
+      if (version !== state.nurseReportVersion) return;
+      if (!personnelKey(state.userId)) throw new Error('Logged-in personnel ID unavailable.');
+      if (!assignmentsCurrent()) throw new Error(state.assignmentLoadError || 'Physician assignments unavailable.');
+      if (!state.selectedPhysicians.size) {
+        $('nurseReportStatus').textContent = selectPhysiciansMessage;
+        return;
+      }
+
       const root = await cclCall(
         CONFIG.nurseReportProgram,
         '^MINE^,' + cclString(formatPromptDate(date))
@@ -1559,11 +1668,27 @@ attendingPersonId: Number(
 
       if (version !== state.nurseReportVersion) return;
 
-      const rows = root.COMMENTS || root.comments || [];
-      if (!Array.isArray(rows)) {
+      if (state.assignmentRefresh) await state.assignmentRefresh;
+      if (version !== state.nurseReportVersion) return;
+      if (state.assignmentSaving || !assignmentsCurrent()) {
+        throw new Error(state.assignmentLoadError || 'Physician assignments changed. Click View Report to reload.');
+      }
+      if (!state.selectedPhysicians.size) {
+        $('nurseReportStatus').textContent = selectPhysiciansMessage;
+        return;
+      }
+      const comments = root.COMMENTS || root.comments || [];
+      if (!Array.isArray(comments)) {
         throw new Error('Unexpected nurse comments report response');
       }
 
+      const scope = { date: state.assignmentDate, ids: new Set(state.selectedPhysicians) };
+      const rows = comments.filter(row => {
+        const id = row.ATTENDING_PERSON_ID ?? row.attending_person_id;
+        if (id == null) throw new Error('The nurse comments CCL response is missing attending physician IDs.');
+        return scope.ids.has(personnelKey(id));
+      });
+      state.nurseReportAssignmentScope = scope;
       state.nurseReportRows = rows;
       state.nurseReportLoadedDate = date;
 
@@ -1587,16 +1712,56 @@ attendingPersonId: Number(
     }
   }
 
-  function printNurseReport() {
-    const date = $('nurseReportDate').value;
+  function reportAssignmentScopeMatches() {
+    const scope = state.nurseReportAssignmentScope;
+    return scope && assignmentsCurrent() && scope.date === state.assignmentDate &&
+      samePhysicians(scope.ids, state.selectedPhysicians);
+  }
 
-    if (state.nurseReportLoading ||
-        !state.nurseReportRows.length ||
-        date !== state.nurseReportLoadedDate) {
-      window.alert('Please load the selected appointment date before printing.');
+  async function printNurseReport() {
+    const date = $('nurseReportDate').value;
+    const button = $('printNurseCommentsReport');
+    const dialog = $('nurseCommentsReportDialog');
+    if (button.disabled || !dialog.open || state.nurseReportLoading ||
+        !state.nurseReportRows.length || date !== state.nurseReportLoadedDate) return;
+
+    if (state.assignmentSaving) {
+      state.nurseReportPrintReadyUntil = 0;
+      button.textContent = 'Print Report';
+      $('nurseReportStatus').textContent = 'Wait for the physician assignment save to finish, then click Print Report.';
+      return;
+    }
+    if (Date.now() >= state.nurseReportPrintReadyUntil || state.assignmentRefresh ||
+        !reportAssignmentScopeMatches()) {
+      state.nurseReportPrintReadyUntil = 0;
+      button.textContent = 'Print Report';
+      button.disabled = true;
+      $('nurseReportStatus').textContent = 'Checking physician assignments before printing…';
+      const version = state.nurseReportVersion;
+      const reportStillOpen = () => dialog.open && version === state.nurseReportVersion &&
+        date === $('nurseReportDate').value;
+
+      // A request already underway may predate the print attempt.
+      if (state.assignmentRefresh) await state.assignmentRefresh;
+      if (!reportStillOpen()) return;
+      await refreshAssignments();
+      if (!reportStillOpen()) return;
+
+      if (state.assignmentLoadError) {
+        clearNurseReport(state.assignmentLoadError + '. Click View Report to retry.');
+      } else if (!reportAssignmentScopeMatches()) {
+        clearNurseReport('Physician assignments changed. Click View Report to reload.');
+      } else {
+        // Keep the actual print call in a fresh user gesture.
+        state.nurseReportPrintReadyUntil = Date.now() + 15000;
+        $('nurseReportStatus').textContent = 'Assignments verified. Click Confirm Print within 15 seconds.';
+        button.textContent = 'Confirm Print';
+        button.disabled = false;
+      }
       return;
     }
 
+    state.nurseReportPrintReadyUntil = 0;
     $('nurseReportPrintArea').innerHTML =
       '<div class="nurse-report-print-sheet">' +
       '<h1>Oncology — Nurse Comments Report</h1>' +
@@ -1662,34 +1827,26 @@ attendingPersonId: Number(
         state.saved.clear();
         state.notesLoaded = false;
       state.appointments = [];
-      // Physician selection persists across date changes.
+      // Assignments are for the clinic day, independent of appointment date.
       state.collapsed.clear();
       render();
       load();
     });
-    // MD-GPT ✦ Physician checkbox dropdown with per-user browser preferences.
     $('physicianDropdownButton').addEventListener('click', () => {
       const panel = $('physicianDropdownPanel');
       panel.hidden = !panel.hidden;
       $('physicianDropdownButton').setAttribute('aria-expanded', String(!panel.hidden));
+      if (!panel.hidden) refreshAssignments();
     });
     $('physicianCheckboxList').addEventListener('change', e => {
       const id = e.target.dataset.physicianId;
-      if (!id) return;
-      if (e.target.checked) state.selectedPhysicians.add(id);
-      else state.selectedPhysicians.delete(id);
-      updatePhysicianSelection();
+      if (id && !e.target.disabled) changeAssignments([id], e.target.checked ? 'ASSIGN' : 'RELEASE');
     });
     $('selectAllPhysicians').addEventListener('click', () => {
-      state.selectedPhysicians = allPhysicianIds();
-      updatePhysicianSelection();
+      changeAssignments(activePhysicians().map(p => String(p.id)), 'ASSIGN');
     });
     $('clearPhysicianSelection').addEventListener('click', () => {
-      clearSavedPhysicianSelection();
-      state.selectedPhysicians = allPhysicianIds();
-      renderPhysicianSelector();
-      renderAssignmentBanner();
-      render();
+      changeAssignments(activePhysicians().map(p => String(p.id)), 'RELEASE');
     });
     document.addEventListener('click', e => {
       if (!e.target.closest('.physician-selector')) {
@@ -1708,7 +1865,10 @@ attendingPersonId: Number(
       render();
     });
     $('showNotes').addEventListener('change', render);
-    $('refreshButton').addEventListener('click', load);
+    $('refreshButton').addEventListener('click', () => {
+      refreshAssignments();
+      load();
+    });
     $('pendingCommentsButton').addEventListener('click', () => {
       const dialog = $('pendingCommentsDialog');
       if (!dialog.open) dialog.showModal();
@@ -1755,14 +1915,7 @@ attendingPersonId: Number(
     });
 
     $('nurseReportDate').addEventListener('change', () => {
-      ++state.nurseReportVersion;
-      state.nurseReportRows = [];
-      state.nurseReportLoadedDate = '';
-      $('nurseReportBody').innerHTML = '';
-      $('nurseReportStatus').textContent =
-        'Click View Report to load the selected date.';
-      $('printNurseCommentsReport').disabled = true;
-      $('loadNurseCommentsReport').disabled = false;
+      clearNurseReport('Click View Report to load the selected date.');
     });
 
     $('loadNurseCommentsReport').addEventListener(
@@ -1935,6 +2088,7 @@ attendingPersonId: Number(
   showAccessStatus();
   // Access must be checked before editable controls are ever displayed.
   loadAccess().then(() => {
+    refreshAssignments();
     load();
     loadPending();
   });
@@ -1947,8 +2101,12 @@ attendingPersonId: Number(
     e.preventDefault();
     e.returnValue = '';
   });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !assignmentsCurrent() && !state.assignmentSaving) refreshAssignments();
+  });
   // Auto-refresh every 3 minutes
   setInterval(() => {
+    if (!document.hidden && !assignmentsCurrent() && !state.assignmentSaving) refreshAssignments();
     const active = document.activeElement;
     const editing = active && (
       active.matches('textarea, input[type="text"]') ||
@@ -1967,6 +2125,7 @@ attendingPersonId: Number(
     ) {
       return;
     }
+    if (!state.assignmentSaving) refreshAssignments();
     load();
   }, CONFIG.autoRefreshMs);
 }());
