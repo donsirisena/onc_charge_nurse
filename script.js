@@ -79,6 +79,8 @@
     bloodRequestVersion: 0,
     nurseReportRows: [],
     nurseReportLoadedDate: '',
+    nurseReportAssignmentScope: null,
+    nurseReportPrintReadyUntil: 0,
     nurseReportVersion: 0,
     nurseReportLoading: false
   };
@@ -335,6 +337,10 @@
     return state.assignmentDate === todayLocal() && !state.assignmentLoadError;
   }
 
+  function samePhysicians(first, second) {
+    return first.size === second.size && [...first].every(id => second.has(id));
+  }
+
   async function refreshAssignments(afterSave = false) {
     if (state.assignmentRefresh) return state.assignmentRefresh;
     if (!state.accessChecked || (state.assignmentSaving && !afterSave)) return;
@@ -352,8 +358,9 @@
         } while (date !== todayLocal());
 
         const rows = root.ASSIGNMENTS ?? root.assignments ?? [];
-        const qual = Number(root.QUAL ?? root.qual);
-        if (!Array.isArray(rows) || (qual !== 1 && qual !== rows.length)) {
+        const rawCount = root.QUAL ?? root.qual;
+        const count = typeof rawCount === 'string' && /^\d+$/.test(rawCount) ? Number(rawCount) : rawCount;
+        if (!Array.isArray(rows) || count !== rows.length) {
           throw new Error('Unexpected physician assignment response');
         }
         const assignments = new Map();
@@ -370,16 +377,15 @@
         }
 
         selectionChanged = state.assignmentDate !== date ||
-          selected.size !== state.selectedPhysicians.size ||
-          [...selected].some(id => !state.selectedPhysicians.has(id));
+          !samePhysicians(selected, state.selectedPhysicians);
         state.assignments = assignments;
         state.selectedPhysicians = selected;
         state.assignmentDate = date;
         state.assignmentLoadError = '';
-        if (selectionChanged && state.nurseReportLoadedDate) {
+        if (state.nurseReportLoadedDate && !reportAssignmentScopeMatches()) {
           clearNurseReport(selected.size
             ? 'Physician assignments changed. Click View Report to reload.'
-            : selectPhysiciansMessage);
+            : selectPhysiciansMessage + ' Then click View Report again.');
         }
       } catch (error) {
         selectionChanged = !!state.assignmentDate;
@@ -387,7 +393,7 @@
         state.selectedPhysicians.clear();
         state.assignmentDate = '';
         state.assignmentLoadError = 'Unable to load physician assignments: ' + error.message;
-        if (state.nurseReportLoadedDate) clearNurseReport(state.assignmentLoadError);
+        if (state.nurseReportLoadedDate) clearNurseReport(state.assignmentLoadError + '. Click View Report to retry.');
       }
     })().finally(() => {
       state.assignmentRefresh = null;
@@ -422,6 +428,9 @@
           );
           if (Number(root.SUCCESS ?? root.success) !== 1) {
             throw new Error(root.MESSAGE ?? root.message ?? 'Unable to save physician assignment.');
+          }
+          if (state.nurseReportLoadedDate) {
+            clearNurseReport('Physician assignments changed. Click View Report to reload.');
           }
         } catch (error) {
           state.assignmentSaveError = error.message;
@@ -1623,6 +1632,9 @@ attendingPersonId: Number(
     state.nurseReportLoading = false;
     state.nurseReportRows = [];
     state.nurseReportLoadedDate = '';
+    state.nurseReportAssignmentScope = null;
+    state.nurseReportPrintReadyUntil = 0;
+    $('printNurseCommentsReport').textContent = 'Print Report';
     $('nurseReportBody').innerHTML = '';
     $('nurseReportStatus').textContent = message;
     $('printNurseCommentsReport').disabled = true;
@@ -1670,11 +1682,13 @@ attendingPersonId: Number(
         throw new Error('Unexpected nurse comments report response');
       }
 
+      const scope = { date: state.assignmentDate, ids: new Set(state.selectedPhysicians) };
       const rows = comments.filter(row => {
         const id = row.ATTENDING_PERSON_ID ?? row.attending_person_id;
         if (id == null) throw new Error('The nurse comments CCL response is missing attending physician IDs.');
-        return state.selectedPhysicians.has(personnelKey(id));
+        return scope.ids.has(personnelKey(id));
       });
+      state.nurseReportAssignmentScope = scope;
       state.nurseReportRows = rows;
       state.nurseReportLoadedDate = date;
 
@@ -1698,20 +1712,56 @@ attendingPersonId: Number(
     }
   }
 
-  function printNurseReport() {
+  function reportAssignmentScopeMatches() {
+    const scope = state.nurseReportAssignmentScope;
+    return scope && assignmentsCurrent() && scope.date === state.assignmentDate &&
+      samePhysicians(scope.ids, state.selectedPhysicians);
+  }
+
+  async function printNurseReport() {
     const date = $('nurseReportDate').value;
+    const button = $('printNurseCommentsReport');
+    const dialog = $('nurseCommentsReportDialog');
+    if (button.disabled || !dialog.open || state.nurseReportLoading ||
+        !state.nurseReportRows.length || date !== state.nurseReportLoadedDate) return;
 
-    if (!assignmentsCurrent() || state.assignmentRefresh || state.assignmentSaving) {
-      loadNurseReport();
+    if (state.assignmentSaving) {
+      state.nurseReportPrintReadyUntil = 0;
+      button.textContent = 'Print Report';
+      $('nurseReportStatus').textContent = 'Wait for the physician assignment save to finish, then click Print Report.';
       return;
     }
-    if (state.nurseReportLoading ||
-        !state.nurseReportRows.length ||
-        date !== state.nurseReportLoadedDate) {
-      window.alert('Please load the selected appointment date before printing.');
+    if (Date.now() >= state.nurseReportPrintReadyUntil || state.assignmentRefresh ||
+        !reportAssignmentScopeMatches()) {
+      state.nurseReportPrintReadyUntil = 0;
+      button.textContent = 'Print Report';
+      button.disabled = true;
+      $('nurseReportStatus').textContent = 'Checking physician assignments before printing…';
+      const version = state.nurseReportVersion;
+      const reportStillOpen = () => dialog.open && version === state.nurseReportVersion &&
+        date === $('nurseReportDate').value;
+
+      // A request already underway may predate the print attempt.
+      if (state.assignmentRefresh) await state.assignmentRefresh;
+      if (!reportStillOpen()) return;
+      await refreshAssignments();
+      if (!reportStillOpen()) return;
+
+      if (state.assignmentLoadError) {
+        clearNurseReport(state.assignmentLoadError + '. Click View Report to retry.');
+      } else if (!reportAssignmentScopeMatches()) {
+        clearNurseReport('Physician assignments changed. Click View Report to reload.');
+      } else {
+        // Keep the actual print call in a fresh user gesture.
+        state.nurseReportPrintReadyUntil = Date.now() + 15000;
+        $('nurseReportStatus').textContent = 'Assignments verified. Click Confirm Print within 15 seconds.';
+        button.textContent = 'Confirm Print';
+        button.disabled = false;
+      }
       return;
     }
 
+    state.nurseReportPrintReadyUntil = 0;
     $('nurseReportPrintArea').innerHTML =
       '<div class="nurse-report-print-sheet">' +
       '<h1>Oncology — Nurse Comments Report</h1>' +
