@@ -41,6 +41,10 @@ const path = require('node:path');
               case 'mrd_onc_charge_assign_get':
                 if (m.timeoutGet) return;
                 if (m.failGet) return finish({}, 503);
+                if (m.holdGet) {
+                  m.finishGet = () => finish({ QUAL: m.assignments.length, ASSIGNMENTS: m.assignments });
+                  return;
+                }
                 return finish({ QUAL: m.qual ?? m.assignments.length, ASSIGNMENTS: m.assignments });
               case 'mrd_onc_charge_assign_save':
                 m.completeSave = () => {
@@ -120,9 +124,18 @@ const path = require('node:path');
     for (const id of ['printOnlyWithComments', 'printNotes']) assert(await at('#' + id).isChecked());
     for (const id of ['printHighlights', 'printStatuses']) assert(!(await at('#' + id).isChecked()));
 
-    const callsBeforePrint = await page.evaluate(() => mock.calls.length);
+    const printCount = () => page.evaluate(() => mock.printCount);
+    const assignmentGets = () => page.evaluate(() => mock.calls.filter(([name]) => name === 'mrd_onc_charge_assign_get').length);
+    const callsBeforePrint = await assignmentGets();
+    await page.evaluate(() => { mock.holdGet = true; });
     await at('#previewPrint').click();
-    assert(await printArea.isVisible());
+    await wait('#printAssignmentStatus', 'Refreshing physician assignments');
+    assert(!(await printArea.isVisible()));
+    assert(await at('#doPrint').isDisabled());
+    await at('#doPrint').dispatchEvent('click');
+    assert.equal(await assignmentGets(), callsBeforePrint + 1);
+    await page.evaluate(() => { mock.holdGet = false; mock.finishGet(); });
+    await printArea.waitFor({ state: 'visible' });
     assert.deepEqual(await printArea.locator('thead th').allTextContents(),
       ['Time', 'Patient', 'MRN', 'Regimen / Plan', 'Resource', 'Nurse comments']);
     assert.match(await printArea.innerText(), /Own Patient/);
@@ -137,11 +150,51 @@ const path = require('node:path');
     const pdf = await page.pdf({ preferCSSPageSize: true });
     assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
     await page.emulateMedia({ media: 'screen' });
+    await page.evaluate(() => {
+      mock.initialAssignments = mock.assignments;
+      mock.assignments = [{ PHYSICIAN_ID: 1253867, NURSE_PRSNL_ID: '6227469' }];
+    });
     await at('#printFromPreview').click();
-    assert.match(await page.evaluate(() => mock.printed), /Own Patient/);
-    assert.equal(await page.evaluate(() => mock.calls.length), callsBeforePrint);
+    await page.waitForFunction(() => mock.printCount === 1);
+    const updatedPrint = await page.evaluate(() => mock.printed);
+    assert.match(updatedPrint, /Other Patient/);
+    assert.doesNotMatch(updatedPrint, /Own Patient/);
+    assert.match(await printArea.innerText(), /Other Patient/);
+    assert.equal(await assignmentGets(), callsBeforePrint + 2);
+
+    await page.evaluate(() => { mock.failGet = true; });
+    await at('#printFromPreview').click();
+    await wait('#printArea .print-assignment-status', 'CCL request status 503');
+    assert.equal(await printCount(), 1);
+    assert.equal(await printArea.locator('.print-sheet').count(), 0);
     await at('#closePrintPreview').click();
 
+    await at('#printOptionsButton').click();
+    await at('#previewPrint').click();
+    await wait('#printAssignmentStatus', 'CCL request status 503');
+    assert(!(await printArea.isVisible()));
+    await page.evaluate(() => { mock.failGet = false; mock.qual = 2; });
+    await at('#doPrint').click();
+    await wait('#printAssignmentStatus', 'Unexpected physician assignment response');
+    assert.equal(await printCount(), 1);
+    await page.evaluate(() => { delete mock.qual; mock.timeoutGet = true; });
+    await at('#doPrint').click();
+    await wait('#printAssignmentStatus', 'Refreshing physician assignments');
+    await page.clock.fastForward(30001);
+    await wait('#printAssignmentStatus', 'timed out');
+    assert.equal(await printCount(), 1);
+    assert(await at('#printDialog').isVisible());
+
+    await page.evaluate(() => {
+      mock.timeoutGet = false;
+      mock.assignments = mock.initialAssignments;
+    });
+    await at('#doPrint').click();
+    await page.waitForFunction(() => mock.printCount === 2);
+    assert.match(await page.evaluate(() => mock.printed), /Own Patient/);
+    assert.doesNotMatch(await page.evaluate(() => mock.printed), /Other Patient/);
+
+    const explicitGets = await assignmentGets();
     for (const layout of ['comments', 'simple', 'detailed', 'attending', 'worksheet']) {
       await at('#printOptionsButton').click();
       await at('input[name="printLayout"][value="' + layout + '"]').check();
@@ -170,6 +223,7 @@ const path = require('node:path');
     assert.doesNotMatch(selectedPrint, /Own Patient/);
     assert.match(selectedPrint, /Nov 19|November 19|19 Nov/);
     assert(await page.evaluate(() => mock.calls.every(([name]) => name !== 'mrd_onc_nurse_com_print_mpage')));
+    assert.equal(await assignmentGets(), explicitGets);
 
     await page.evaluate(() => { mock.failGet = true; });
     await at('#refreshButton').click();

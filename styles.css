@@ -444,6 +444,9 @@
   .pending-comment-date { margin-left: auto; }
 }
 /* Fix Print Preview button alignment */
+.print-assignment-status { margin: 8px 0; font-size: 12px; }
+.print-assignment-status:empty { display: none; }
+
 .print-preview-actions {
     display: flex !important;
     align-items: center !important;

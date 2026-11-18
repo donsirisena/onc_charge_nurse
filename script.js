@@ -346,7 +346,7 @@
           root = await cclCall(CONFIG.assignmentGetProgram, '^MINE^', 30000);
         } while (date !== todayLocal());
 
-        const rows = root.ASSIGNMENTS ?? root.assignments ?? [];
+        const { assignments: lowerRows = [], ASSIGNMENTS: rows = lowerRows } = root;
         const rawCount = root.QUAL ?? root.qual;
         const count = typeof rawCount === 'string' && /^\d+$/.test(rawCount) ? Number(rawCount) : rawCount;
         if (!Array.isArray(rows) || count !== rows.length) {
@@ -1750,16 +1750,64 @@ attendingPersonId: Number(
       'scroll', closePalette, true
     );
     const dialog = $('printDialog');
-    $('printOptionsButton').addEventListener(
-      'click', () => dialog.showModal()
-    );
+    const printStatus = $('printAssignmentStatus');
+    const printActions = [$('previewPrint'), $('doPrint')];
+    let printSession = 0;
+    let printRefreshPending = false;
+
+    function withPrintAssignments(action, status, stillActive, previewButton) {
+      if (printRefreshPending || !stillActive()) return;
+      status.textContent = '';
+      if ($('printAttending').value !== 'current') {
+        action();
+        return;
+      }
+      if (state.assignmentSaving || !personnelKey(state.userId)) {
+        status.textContent = state.assignmentSaving
+          ? 'Wait for the physician assignment save to finish, then try again.'
+          : 'Unable to verify physician assignments. Logged-in personnel ID unavailable.';
+        return;
+      }
+
+      // Share any assignment GET already in progress and lock both print entry points.
+      printRefreshPending = true;
+      const buttons = previewButton ? [...printActions, previewButton] : printActions;
+      buttons.forEach(button => { button.disabled = true; });
+      status.textContent = 'Refreshing physician assignments…';
+      refreshAssignments().then(() => {
+        if (!stillActive()) return;
+        if (!assignmentsCurrent() || state.assignmentSaving) {
+          status.textContent = state.assignmentLoadError ||
+            'Unable to verify current physician assignments. Try again.';
+          if (previewButton) $('printArea').querySelector('.print-sheet')?.remove();
+          return;
+        }
+        status.textContent = '';
+        // If the filter changed while waiting, let the user choose the action again.
+        if ($('printAttending').value === 'current') action();
+      }).finally(() => {
+        printRefreshPending = false;
+        buttons.forEach(button => { button.disabled = false; });
+      });
+    }
+
+    function withPrintOptions(action) {
+      const session = printSession;
+      withPrintAssignments(action, printStatus, () => dialog.open && printSession === session);
+    }
+
+    $('printOptionsButton').addEventListener('click', () => {
+      printSession++;
+      printStatus.textContent = '';
+      dialog.showModal();
+    });
     $('closePrint').addEventListener(
       'click', () => dialog.close()
     );
     $('cancelPrint').addEventListener(
       'click', () => dialog.close()
     );
-    $('previewPrint').addEventListener('click', () => {
+    $('previewPrint').addEventListener('click', () => withPrintOptions(() => {
       buildPrint();
       const printArea = $('printArea');
       const actions = document.createElement('div');
@@ -1771,11 +1819,14 @@ attendingPersonId: Number(
       printButton.type = 'button';
       printButton.className = 'primary';
       printButton.textContent = '▣ Print';
-      printButton.addEventListener('click', () => {
+      const previewStatus = document.createElement('div');
+      previewStatus.className = 'no-print print-assignment-status';
+      previewStatus.setAttribute('role', 'status');
+      printButton.addEventListener('click', () => withPrintAssignments(() => {
         buildPrint();
-        printArea.insertBefore(toolbar, printArea.firstChild);
+        printArea.prepend(toolbar, previewStatus);
         window.print();
-      });
+      }, previewStatus, () => toolbar.isConnected && !dialog.open, printButton));
 
       const closeButton = document.createElement('button');
       closeButton.id = 'closePrintPreview';
@@ -1799,17 +1850,17 @@ attendingPersonId: Number(
       label.style.cssText = 'font-size:14px;color:#1d3d5c;white-space:nowrap;';
       toolbar.appendChild(label);
       toolbar.appendChild(actions);
-      printArea.insertBefore(toolbar, printArea.firstChild);
+      printArea.prepend(toolbar, previewStatus);
       document.body.classList.add('print-preview-visible');
       dialog.close();
       printArea.scrollIntoView({ behavior: 'smooth' });
-    });
-    $('doPrint').addEventListener('click', () => {
+    }));
+    $('doPrint').addEventListener('click', () => withPrintOptions(() => {
       buildPrint();
       document.body.classList.remove('print-preview-visible');
       dialog.close();
       window.print();
-    });
+    }));
     $('printForm').addEventListener(
       'submit', e => e.preventDefault()
     );
