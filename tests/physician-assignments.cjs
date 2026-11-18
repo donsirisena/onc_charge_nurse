@@ -12,15 +12,15 @@ const path = require('node:path');
     await page.addInitScript(() => {
       const mine = { PHYSICIAN_ID: '564826', NURSE_PRSNL_ID: 6227469, NURSE_NAME: 'Same Name' };
       const other = { PHYSICIAN_ID: 1253867, NURSE_PRSNL_ID: 2, NURSE_NAME: 'Same Name' };
-      const rows = [
-        { ATTENDING_PERSON_ID: 564826, ATTENDING: 'Same Doctor Name', PT_NAME: 'Own Patient' },
-        { attending_person_id: '1253867', ATTENDING: 'Same Doctor Name', PT_NAME: 'Other Patient' }
+      const appointments = [
+        { id: 1, physician: 564826, patient: 'Own Patient', note: 'Saved first line\nSaved second line' },
+        { id: 2, physician: '1253867', patient: 'Other Patient', note: 'Other note' },
+        { id: 3, physician: 564826, patient: 'Without Comment', note: '' }
       ];
-      window.mock = { assignments: [mine, other], rows, calls: [], printed: '', printCount: 0 };
+      window.mock = { assignments: [mine, other], calls: [], printed: '', printCount: 0 };
       window.print = () => {
         mock.printCount++;
-        mock.printed = document.getElementById('nurseReportPrintArea').innerHTML;
-        window.dispatchEvent(new Event('afterprint'));
+        mock.printed = document.getElementById('printArea').innerHTML;
       };
       localStorage.setItem('nygh_onc_charge_physicians_v1_6227469', '[1253867]');
       window.XMLCclRequest = class {
@@ -55,12 +55,17 @@ const path = require('node:path');
                 };
                 return;
               case 'mrd_onc_charge_nurse_mpage':
-                return finish({ LIST: rows.slice(0, 2).map((r, i) => ({
-                  pt_name: r.PT_NAME, attending: r.ATTENDING, attending_person_id: r.ATTENDING_PERSON_ID ?? r.attending_person_id,
-                  sched_event_id: i + 1, person_id: i + 1, encntr_id: i + 1
+                return finish({ LIST: appointments.map(a => ({
+                  pt_name: a.patient + (args.includes('19-NOV-2026') ? ' on next date' : ''),
+                  attending: 'Same Doctor Name', attending_person_id: a.physician,
+                  sched_event_id: a.id, person_id: a.id, encntr_id: a.id,
+                  mrn: 'MRN' + a.id, pplan_name: 'Treatment Plan', resource: 'Chair ' + a.id,
+                  appt_dttm: '2026-NOV-18 09:00', appt_status: 'Confirmed', dot: 'Day 1'
                 })) });
-              case 'mrd_onc_nurse_com_print_mpage':
-                return finish({ COMMENTS: m.rows });
+              case 'mrd_onc_nurse_notes_get':
+                return finish({ NOTES: appointments.map(a => ({
+                  SCH_EVENT_ID: a.id, PERSON_ID: a.id, ENCNTR_ID: a.id, NURSE_NOTE: a.note
+                })) });
               case 'mrd_onc_nurse_notes_save':
                 return finish({ SUCCESS: 1, SCH_EVENT_ID: Number(args.split(',')[1]) });
               default: return finish({});
@@ -77,7 +82,7 @@ const path = require('node:path');
     const wait = async (selector, value) => {
       await page.waitForFunction(([selector, value]) => document.querySelector(selector).textContent.includes(value), [selector, value]);
     };
-    await wait('#appointmentCount', '1');
+    await wait('#appointmentCount', '2');
     assert.match(await at('#appointmentGroups').innerText(), /Own Patient/);
     await at('#physicianDropdownButton').click();
     assert(await check(564826).isChecked());
@@ -105,108 +110,87 @@ const path = require('node:path');
     assert(await check(4316564).isDisabled());
     assert(!(await check(4316564).isChecked()));
 
-    const printButton = at('#printNurseCommentsReport');
-    const printCount = () => page.evaluate(() => mock.printCount);
-    const getCount = () => page.evaluate(() => mock.calls.filter(([name]) => name === 'mrd_onc_charge_assign_get').length);
-    await page.evaluate(() => {
-      mock.assignments.push({ PHYSICIAN_ID: 1883690, NURSE_PRSNL_ID: '6227469' });
-      mock.rows.push({ ATTENDING_PERSON_ID: '1883690', ATTENDING: 'Second Doctor', PT_NAME: 'Second Patient' });
-    });
-    await at('#nurseCommentsReportButton').click();
-    await wait('#nurseReportStatus', '2 nurse comments');
-    assert.match(await at('#nurseReportBody').innerText(), /Own Patient/);
-    assert.match(await at('#nurseReportBody').innerText(), /Second Patient/);
-    assert.doesNotMatch(await at('#nurseReportBody').innerText(), /Other Patient/);
-
-    const beforePrintGets = await getCount();
-    await printButton.click();
-    await wait('#nurseReportStatus', 'Assignments verified');
-    assert.equal(await getCount(), beforePrintGets + 1);
-    assert.equal(await printCount(), 0);
-    await page.clock.fastForward(15001);
-    await printButton.click();
-    await wait('#nurseReportStatus', 'Assignments verified');
-    assert.equal(await getCount(), beforePrintGets + 2);
-    assert.equal(await printCount(), 0);
-    await printButton.click();
-    assert.equal(await printCount(), 1);
-    const print = await page.evaluate(() => mock.printed);
-    assert.match(print, /nurse-report-group-start.*Own Patient/);
-    assert.match(print, /Second Patient/);
-    assert.doesNotMatch(print, /Other Patient/);
-
-    await at('#nurseCommentsReportButton').click();
-    await wait('#nurseReportStatus', '2 nurse comments');
-    await page.evaluate(() => {
-      mock.assignments.find(a => String(a.PHYSICIAN_ID) === '1883690').NURSE_PRSNL_ID = 2;
-    });
-    await printButton.click();
-    await wait('#nurseReportStatus', 'Click View Report to reload');
-    assert(await printButton.isDisabled());
-    assert.equal(await at('#nurseReportBody').innerText(), '');
-    assert.equal(await printCount(), 1);
-
-    await at('#loadNurseCommentsReport').click();
-    await wait('#nurseReportStatus', '1 nurse comments');
-    await page.evaluate(() => { mock.failGet = true; });
-    await printButton.click();
-    await wait('#nurseReportStatus', 'CCL request status 503');
-    assert(await printButton.isDisabled());
-    assert.equal(await printCount(), 1);
-    assert.equal(await at('#appointmentCount').textContent(), '0');
-
-    await page.evaluate(() => { mock.failGet = false; });
-    await at('#loadNurseCommentsReport').click();
-    await wait('#nurseReportStatus', '1 nurse comments');
-    await page.evaluate(() => { mock.timeoutGet = true; });
-    await printButton.click();
-    await wait('#nurseReportStatus', 'Checking physician assignments');
-    await page.clock.fastForward(30001);
-    await wait('#nurseReportStatus', 'timed out');
-    assert(await printButton.isDisabled());
-    assert.equal(await printCount(), 1);
-
-    await page.evaluate(() => { mock.timeoutGet = false; mock.qual = 1; });
-    await at('#loadNurseCommentsReport').click();
-    await wait('#nurseReportStatus', 'Unexpected physician assignment response');
-    assert(await printButton.isDisabled());
-    await page.evaluate(() => { delete mock.qual; mock.assignments = []; });
-    await at('#loadNurseCommentsReport').click();
-    await wait('#nurseReportStatus', 'Select physicians');
-    assert(await printButton.isDisabled());
-
-    await page.evaluate(() => {
-      mock.assignments = [{ PHYSICIAN_ID: 564826, NURSE_PRSNL_ID: '6227469' }];
-      mock.rows = [{ ATTENDING: 'Name only', PT_NAME: 'Hidden Patient' }];
-    });
-    await at('#loadNurseCommentsReport').click();
-    await wait('#nurseReportStatus', 'missing attending physician IDs');
-    assert(await at('#printNurseCommentsReport').isDisabled());
-    await page.evaluate(() => { mock.rows = [{ ATTENDING_PERSON_ID: 564826, PT_NAME: 'Yesterday' }]; });
-    await at('#loadNurseCommentsReport').click();
-    await wait('#nurseReportBody', 'Yesterday');
-    await page.evaluate(() => {
-      mock.assignments = [{ PHYSICIAN_ID: 1253867, NURSE_PRSNL_ID: '6227469' }];
-      mock.rows = [{ ATTENDING_PERSON_ID: 1253867, PT_NAME: 'Today' }];
-    });
-    await page.clock.setSystemTime(new Date('2026-11-19T05:00:01Z'));
-    await page.clock.fastForward(180001);
-    await wait('#nurseReportStatus', 'clinic date changed');
-    assert(await at('#printNurseCommentsReport').isDisabled());
-    await at('#loadNurseCommentsReport').click();
-    await wait('#nurseReportBody', 'Today');
-    await at('#doneNurseCommentsReport').click();
+    assert.equal(await at('#nurseCommentsReportButton, #nurseCommentsReportDialog').count(), 0);
+    const printArea = at('#printArea');
     await at('#printOptionsButton').click();
-    assert.equal(await at('input[name="printLayout"]').count(), 4);
-    await at('#cancelPrint').click();
-    for (const layout of ['simple', 'detailed', 'attending', 'worksheet']) {
+    assert.equal(await at('input[name="printLayout"]').count(), 5);
+    assert.equal(await at('input[name="printLayout"]').first().getAttribute('value'), 'comments');
+    assert(await at('input[value="comments"]').isChecked());
+    assert.equal(await at('#printAttending').inputValue(), 'current');
+    for (const id of ['printOnlyWithComments', 'printNotes']) assert(await at('#' + id).isChecked());
+    for (const id of ['printHighlights', 'printStatuses']) assert(!(await at('#' + id).isChecked()));
+
+    const callsBeforePrint = await page.evaluate(() => mock.calls.length);
+    await at('#previewPrint').click();
+    assert(await printArea.isVisible());
+    assert.deepEqual(await printArea.locator('thead th').allTextContents(),
+      ['Time', 'Patient', 'MRN', 'Regimen / Plan', 'Resource', 'Nurse comments']);
+    assert.match(await printArea.innerText(), /Own Patient/);
+    assert.doesNotMatch(await printArea.innerText(), /Without Comment|Other Patient/);
+    assert.match(await printArea.innerText(), /Treatment Plan/);
+    assert.match(await printArea.innerText(), /Chair 1/);
+    assert.match(await printArea.textContent(), /Saved first line\nSaved second line/);
+    await page.emulateMedia({ media: 'print' });
+    assert(await printArea.isVisible());
+    assert(!(await at('#printFromPreview').isVisible()));
+    assert.equal(await printArea.locator('thead').evaluate(el => getComputedStyle(el).display), 'table-header-group');
+    const pdf = await page.pdf({ preferCSSPageSize: true });
+    assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
+    await page.emulateMedia({ media: 'screen' });
+    await at('#printFromPreview').click();
+    assert.match(await page.evaluate(() => mock.printed), /Own Patient/);
+    assert.equal(await page.evaluate(() => mock.calls.length), callsBeforePrint);
+    await at('#closePrintPreview').click();
+
+    for (const layout of ['comments', 'simple', 'detailed', 'attending', 'worksheet']) {
       await at('#printOptionsButton').click();
       await at('input[name="printLayout"][value="' + layout + '"]').check();
       await at('#printAttending').selectOption('all');
+      await at('#previewPrint').click();
+      assert.match(await printArea.innerText(), /Own Patient/);
+      assert.match(await printArea.innerText(), /Other Patient/);
+      if (layout === 'comments') assert.equal(await printArea.locator('.print-attending-heading').count(), 2);
+      if (layout === 'detailed') assert.match(await printArea.innerText(), /Appointment type/);
+      if (layout === 'worksheet') assert.match(await printArea.innerText(), /Handwritten notes/);
+      await at('#printFromPreview').click();
+      await at('#closePrintPreview').click();
+      await at('#printOptionsButton').click();
       await at('#doPrint').click();
-      assert.match(await at('#printArea').innerHTML(), /Own Patient/);
-      assert.match(await at('#printArea').innerHTML(), /Other Patient/);
+      assert.match(await page.evaluate(() => mock.printed), /Other Patient/);
     }
+
+    await at('#appointmentDate').fill('2026-11-19');
+    await wait('#appointmentGroups', 'Own Patient on next date');
+    await at('#printOptionsButton').click();
+    await at('input[value="comments"]').check();
+    await at('#printAttending').selectOption('1253867');
+    await at('#doPrint').click();
+    const selectedPrint = await page.evaluate(() => mock.printed);
+    assert.match(selectedPrint, /Other Patient on next date/);
+    assert.doesNotMatch(selectedPrint, /Own Patient/);
+    assert.match(selectedPrint, /Nov 19|November 19|19 Nov/);
+    assert(await page.evaluate(() => mock.calls.every(([name]) => name !== 'mrd_onc_nurse_com_print_mpage')));
+
+    await page.evaluate(() => { mock.failGet = true; });
+    await at('#refreshButton').click();
+    await wait('#physicianDropdownButton', 'Assignments Unavailable');
+    await page.evaluate(() => { mock.failGet = false; mock.qual = 1; });
+    await at('#physicianDropdownButton').click();
+    await wait('#physicianAssignmentStatus', 'Unexpected physician assignment response');
+    await page.evaluate(() => { delete mock.qual; mock.timeoutGet = true; });
+    await at('#physicianDropdownButton').click();
+    await at('#physicianDropdownButton').click();
+    await page.clock.fastForward(30001);
+    await wait('#physicianAssignmentStatus', 'timed out');
+    await page.evaluate(() => { mock.timeoutGet = false; mock.assignments = []; });
+    await at('#refreshButton').click();
+    await wait('#physicianDropdownButton', '0 of 9');
+    await page.evaluate(() => {
+      mock.assignments = [{ PHYSICIAN_ID: 1253867, NURSE_PRSNL_ID: '6227469' }];
+    });
+    await page.clock.setSystemTime(new Date('2026-11-19T05:00:01Z'));
+    await page.clock.fastForward(180001);
+    await wait('#appointmentGroups', 'Other Patient');
     await at('[data-note="2"]').fill('Synthetic note');
     await at('[data-palette="2"]').click();
     await at('[data-pick="yellow"]').click();
@@ -219,21 +203,6 @@ const path = require('node:path');
     await at('#pendingCommentsButton').click();
     assert(await at('#pendingCommentsDialog').isVisible());
     await at('#donePendingComments').click();
-    await page.evaluate(() => { mock.failSave = false; });
-    await at('#physicianDropdownButton').click();
-    await check(1253867).click();
-    await page.waitForFunction(() => mock.calls.some(([, args]) => args === '^MINE^,1253867,^RELEASE^'));
-    await page.evaluate(() => mock.completeSave());
-    await wait('#nurseReportStatus', 'Click View Report to reload');
-    await wait('#physicianDropdownButton', '0 of 9');
-    assert(await printButton.isDisabled());
-    assert.equal(await at('#nurseReportBody').innerText(), '');
-    await check(1253867).click();
-    await page.waitForFunction(() => mock.calls.some(([, args]) => args === '^MINE^,1253867,^ASSIGN^'));
-    await page.evaluate(() => mock.completeSave());
-    await wait('#physicianDropdownButton', '1 of 9');
-    await at('#nurseCommentsReportButton').click();
-    await wait('#nurseReportBody', 'Today');
     assert.deepEqual(errors, []);
     console.log('Mocked Chromium workflow passed');
   } finally {
