@@ -81,6 +81,10 @@ const path = require('node:path');
                   SCH_EVENT_ID: a.id, PERSON_ID: a.id, ENCNTR_ID: a.id, NURSE_NOTE: a.note
                 })) });
               case 'mrd_onc_nurse_notes_pending':
+                if (m.holdPending) {
+                  m.finishPending = () => finish({ PENDING: m.pending });
+                  return;
+                }
                 return finish({ PENDING: m.pending });
               case 'mrd_onc_nurse_notes_save': {
                 const id = Number(args.split(',')[1]);
@@ -271,15 +275,41 @@ const path = require('node:path');
     await page.clock.fastForward(5001);
     assert.equal(await at('#notice').textContent(), '');
     await wait('#pendingCount', '2');
+    await page.evaluate(() => {
+      mock.holdGet = true;
+      mock.holdPending = true;
+      delete mock.finishGet;
+    });
     await at('#pendingCommentsButton').click();
+    assert(await at('#pendingCommentsDialog').isVisible());
     const pendingList = '#pendingCommentsList';
+    const assertPendingLoading = async () => {
+      assert.equal(await at(pendingList).textContent(), 'Loading pending comments…');
+      assert.equal(await at(pendingList).getAttribute('aria-busy'), 'true');
+      assert.equal(await at('#pendingCount').textContent(), 'Loading…');
+      assert.equal(await at('[data-pending-clear]').count(), 0);
+    };
+    await assertPendingLoading();
+    await page.waitForFunction(() => typeof mock.finishGet === 'function');
+    await page.evaluate(() => {
+      mock.holdGet = false;
+      mock.finishGet();
+    });
+    await page.waitForFunction(() => typeof mock.finishPending === 'function');
+    await assertPendingLoading();
+    await page.evaluate(() => {
+      mock.holdPending = false;
+      mock.finishPending();
+    });
     await wait(pendingList, 'Historical Pending');
+    assert.equal(await at(pendingList).getAttribute('aria-busy'), 'false');
     assert.equal(await at('#pendingCount').textContent(), '2');
     assert.doesNotMatch(await at(pendingList).innerText(), /Assigned Pending|Unlinked Pending/);
 
     const getCount = await assignmentGets();
     await page.evaluate(() => { mock.holdGet = true; });
     await at('#refreshPendingComments').click();
+    await assertPendingLoading();
     await at('#refreshPendingComments').click();
     assert.equal(await assignmentGets(), getCount + 1);
     await page.evaluate(() => {
@@ -301,7 +331,17 @@ const path = require('node:path');
     await page.evaluate(() => {
       mock.assignments = [{ PHYSICIAN_ID: 1253867, NURSE_PRSNL_ID: 6227469 }];
     });
+    await page.evaluate(() => {
+      mock.holdGet = true;
+      delete mock.finishGet;
+    });
     await page.clock.fastForward(180001);
+    await page.waitForFunction(() => typeof mock.finishGet === 'function');
+    await assertPendingLoading();
+    await page.evaluate(() => {
+      mock.holdGet = false;
+      mock.finishGet();
+    });
     await wait(pendingList, 'Historical Pending');
     page.once('dialog', dialog => dialog.accept());
     await at('[data-pending-clear="13"]').click();

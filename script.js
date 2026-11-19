@@ -387,6 +387,7 @@
       syncPending();
     });
     renderPhysicianSelector();
+    syncPending();
     return state.assignmentRefresh;
   }
 
@@ -600,11 +601,16 @@
     return '';
   }
 
+  function pendingIsLoading() {
+    return state.pendingLoading || state.assignmentRefresh !== null || state.assignmentSaving;
+  }
+
   function syncPending() {
-    state.pending = state.pendingLoading || state.pendingError || state.assignmentSaving || pendingAssignmentError()
+    const loading = pendingIsLoading();
+    state.pending = loading || state.pendingError || pendingAssignmentError()
       ? []
       : state.pendingRows.filter(row => state.selectedPhysicians.has(row.attendingPersonId));
-    $('pendingCount').textContent = String(state.pending.length);
+    $('pendingCount').textContent = loading ? 'Loading…' : String(state.pending.length);
     renderPending();
   }
 
@@ -650,7 +656,7 @@
   }
 
   function findPending(id) {
-    if (state.pendingLoading || state.assignmentRefresh || state.assignmentSaving || pendingAssignmentError()) return;
+    if (pendingIsLoading() || pendingAssignmentError()) return;
     return state.pending.find(row =>
       String(row.schedEventId) === String(id) && state.selectedPhysicians.has(row.attendingPersonId));
   }
@@ -659,7 +665,9 @@
   const list = $('pendingCommentsList');
   if (!list) return;
 
-  if (state.pendingLoading || state.assignmentSaving) {
+  const loading = pendingIsLoading();
+  list.setAttribute('aria-busy', String(loading));
+  if (loading) {
     list.innerHTML = '<p class="muted">Loading pending comments…</p>';
     return;
   }
@@ -1666,10 +1674,9 @@
       refreshAssignments();
       load();
     });
-    $('pendingCommentsButton').addEventListener('click', async () => {
+    $('pendingCommentsButton').addEventListener('click', () => {
       const dialog = $('pendingCommentsDialog');
       loadPending();
-      await state.assignmentRefresh;
       if (!dialog.open) dialog.showModal();
     });
     $('closePendingComments').addEventListener('click', () => $('pendingCommentsDialog').close());
