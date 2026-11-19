@@ -17,7 +17,17 @@ const path = require('node:path');
         { id: 2, physician: '1253867', patient: 'Other Patient', note: 'Other note' },
         { id: 3, physician: 564826, patient: 'Without Comment', note: '' }
       ];
-      window.mock = { assignments: [mine, other], calls: [], printed: '', printCount: 0 };
+      const pending = [
+        [11, 'Assigned Pending', '564826', '2026-11-19'],
+        [12, 'Other Pending', 1253867, '2026-11-19'],
+        [13, 'Historical Pending', 1253867, '2026-10-05'],
+        [14, 'Unlinked Pending', undefined, '2026-11-19']
+      ].map(([id, name, attendingId, date]) => ({
+        SCH_EVENT_ID: id, PERSON_ID: id, ENCNTR_ID: id, PATIENT_NAME: name,
+        ATTENDING_PERSON_ID: attendingId, ATTENDING: 'Same Doctor Name',
+        APPT_DATE: date, NURSE_NOTE: 'Pending note'
+      }));
+      window.mock = { assignments: [mine, other], pending, calls: [], printed: '', printCount: 0 };
       window.print = () => {
         mock.printCount++;
         mock.printed = document.getElementById('printArea').innerHTML;
@@ -70,8 +80,13 @@ const path = require('node:path');
                 return finish({ NOTES: appointments.map(a => ({
                   SCH_EVENT_ID: a.id, PERSON_ID: a.id, ENCNTR_ID: a.id, NURSE_NOTE: a.note
                 })) });
-              case 'mrd_onc_nurse_notes_save':
-                return finish({ SUCCESS: 1, SCH_EVENT_ID: Number(args.split(',')[1]) });
+              case 'mrd_onc_nurse_notes_pending':
+                return finish({ PENDING: m.pending });
+              case 'mrd_onc_nurse_notes_save': {
+                const id = Number(args.split(',')[1]);
+                if (args.endsWith('^CLEAR^')) m.pending = m.pending.filter(row => row.SCH_EVENT_ID !== id);
+                return finish({ SUCCESS: 1, SCH_EVENT_ID: id });
+              }
               default: return finish({});
             }
           });
@@ -87,6 +102,7 @@ const path = require('node:path');
       await page.waitForFunction(([selector, value]) => document.querySelector(selector).textContent.includes(value), [selector, value]);
     };
     await wait('#appointmentCount', '2');
+    await wait('#pendingCount', '1');
     assert.match(await at('#appointmentGroups').innerText(), /Own Patient/);
     await at('#physicianDropdownButton').click();
     assert(await check(564826).isChecked());
@@ -254,8 +270,55 @@ const path = require('node:path');
       name === 'mrd_onc_nurse_notes_save' && args.includes('^Synthetic note^,^yellow^,^SAVE^'))));
     await page.clock.fastForward(5001);
     assert.equal(await at('#notice').textContent(), '');
+    await wait('#pendingCount', '2');
     await at('#pendingCommentsButton').click();
-    assert(await at('#pendingCommentsDialog').isVisible());
+    const pendingList = '#pendingCommentsList';
+    await wait(pendingList, 'Historical Pending');
+    assert.equal(await at('#pendingCount').textContent(), '2');
+    assert.doesNotMatch(await at(pendingList).innerText(), /Assigned Pending|Unlinked Pending/);
+
+    const getCount = await assignmentGets();
+    await page.evaluate(() => { mock.holdGet = true; });
+    await at('#refreshPendingComments').click();
+    await at('#refreshPendingComments').click();
+    assert.equal(await assignmentGets(), getCount + 1);
+    await page.evaluate(() => {
+      mock.holdGet = false;
+      mock.assignments = [{ PHYSICIAN_ID: 564826, NURSE_PRSNL_ID: 6227469 }];
+      mock.finishGet();
+    });
+    await wait(pendingList, 'Assigned Pending');
+    assert.equal(await at('#pendingCount').textContent(), '1');
+    assert.doesNotMatch(await at(pendingList).innerText(), /Other Pending|Historical Pending|Unlinked Pending/);
+
+    await page.evaluate(() => { mock.assignments = []; });
+    page.once('dialog', dialog => dialog.accept());
+    await at('[data-pending-clear="11"]').click();
+    await wait(pendingList, 'No physicians are currently assigned to you.');
+    assert.equal(await at('#pendingCount').textContent(), '0');
+    assert.equal(await page.evaluate(() => mock.calls.filter(([, args]) => args.endsWith('^CLEAR^')).length), 0);
+
+    await page.evaluate(() => {
+      mock.assignments = [{ PHYSICIAN_ID: 1253867, NURSE_PRSNL_ID: 6227469 }];
+    });
+    await page.clock.fastForward(180001);
+    await wait(pendingList, 'Historical Pending');
+    page.once('dialog', dialog => dialog.accept());
+    await at('[data-pending-clear="13"]').click();
+    await wait('#notice', 'Pending comment resolved and archived.');
+    await wait(pendingList, 'Other Pending');
+    assert.equal(await at('#pendingCount').textContent(), '1');
+    assert.doesNotMatch(await at(pendingList).innerText(), /Historical Pending/);
+
+    await page.evaluate(() => { mock.failGet = true; });
+    await at('#refreshPendingComments').click();
+    await wait(pendingList, 'Unable to load physician assignments');
+    assert.equal(await at('#pendingCount').textContent(), '0');
+    assert.equal(await at('[data-pending-clear]').count(), 0);
+    await page.evaluate(() => { mock.failGet = false; mock.qual = 0; });
+    await at('#refreshPendingComments').click();
+    await wait(pendingList, 'Unexpected physician assignment response');
+    assert.equal(await at('#pendingCount').textContent(), '0');
     await at('#donePendingComments').click();
     assert.deepEqual(errors, []);
     console.log('Mocked Chromium workflow passed');
