@@ -69,7 +69,8 @@
     pendingLoading: false,
     pendingError: '',
     pendingClearing: new Set(),
-    pendingVersion: 0,
+    pendingRefresh: null,
+    pendingRows: [],
     pendingCollapsed: new Set(),
     bloodPatients: new Set(),
     bloodSummaryAvailable: false,
@@ -383,8 +384,10 @@
       renderPhysicianSelector();
       renderAssignmentBanner();
       if (selectionChanged) render();
+      syncPending();
     });
     renderPhysicianSelector();
+    syncPending();
     return state.assignmentRefresh;
   }
 
@@ -397,6 +400,7 @@
     }
 
     state.assignmentSaving = true;
+    syncPending();
     state.assignmentSaveError = '';
     const date = state.assignmentDate;
     renderPhysicianSelector();
@@ -423,6 +427,7 @@
     } finally {
       state.assignmentSaving = false;
       renderPhysicianSelector();
+      syncPending();
     }
   }
 
@@ -583,71 +588,106 @@
     loadBloodDetails();
   }
 
-  // Historical nurse comments from the previous 30 calendar days.
-  // All displayed clinical strings are escaped before insertion into HTML.
-  async function loadPending() {
-    const version = ++state.pendingVersion;
+  function pendingAttendingId(value) {
+    if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+$/.test(value))) return '';
+    return personnelKey(value);
+  }
+
+  function pendingAssignmentError() {
+    if (!personnelKey(state.userId)) return 'Logged-in personnel ID unavailable.';
+    if (!assignmentsCurrent()) {
+      return state.assignmentLoadError || 'Unable to verify current physician assignments.';
+    }
+    return '';
+  }
+
+  function pendingIsLoading() {
+    return state.pendingLoading || state.assignmentRefresh !== null || state.assignmentSaving;
+  }
+
+  function syncPending() {
+    const loading = pendingIsLoading();
+    state.pending = loading || state.pendingError || pendingAssignmentError()
+      ? []
+      : state.pendingRows.filter(row => state.selectedPhysicians.has(row.attendingPersonId));
+    $('pendingCount').textContent = loading ? 'Loading…' : String(state.pending.length);
+    renderPending();
+  }
+
+  function loadPending() {
+    if (state.pendingRefresh) return state.pendingRefresh;
+    if (state.pendingClearing.size) return;
     state.pendingLoading = true;
     state.pendingError = '';
-    renderPending();
-    try {
-      const root = await cclCall(CONFIG.pendingProgram, '^MINE^');
-      if (version !== state.pendingVersion) return;
-      const rows = root.PENDING || root.pending || [];
-      if (!Array.isArray(rows)) throw new Error('Unexpected pending comments reply');
-      state.pending = rows.filter(r => String(r.NURSE_NOTE || r.nurse_note || '').trim())
-        .map(r => ({
-          schedEventId: Number(r.SCH_EVENT_ID || r.sch_event_id || 0),
-          personId: Number(r.PERSON_ID || r.person_id || 0),
-          encntrId: Number(r.ENCNTR_ID || r.encntr_id || 0),
-          ptName: String(r.PATIENT_NAME || r.patient_name || ''),
-          mrn: String(r.MRN || r.mrn || ''),
-          apptDate: String(r.APPT_DATE || r.appt_date || ''),
-          note: String(r.NURSE_NOTE || r.nurse_note || ''),
-          highlight: String(r.HIGHLIGHT || r.highlight || '').toLowerCase(),
-          status: String(r.SCH_STATE || r.sch_state || ''),
-          attending: String(
-          r.ATTENDING || r.attending || 'Unassigned attending'
-  ),
-attendingPersonId: Number(
-  r.ATTENDING_PERSON_ID || r.attending_person_id || 0
-)
-        }))
-        .filter(r => r.schedEventId > 0 && r.personId > 0 && r.encntrId > 0);
-      $('pendingCount').textContent = String(state.pending.length);
-      $('pendingCommentsButton').title = 'Comments from appointments in the previous 30 days';
-    } catch (error) {
-      if (version !== state.pendingVersion) return;
-      // Retain prior results, and don't claim an empty list on query failure.
-      $('pendingCommentsButton').title = 'Unable to refresh pending comments';
-      state.pendingError = error.message;
-      return;
-    } finally {
-      if (version === state.pendingVersion) {
-        state.pendingLoading = false;
-        renderPending();
+    syncPending();
+
+    state.pendingRefresh = (async () => {
+      try {
+        await refreshAssignments();
+        if (pendingAssignmentError() || state.assignmentSaving) return;
+        const root = await cclCall(CONFIG.pendingProgram, '^MINE^', 30000);
+        const rows = root.PENDING ?? root.pending ?? [];
+        if (!Array.isArray(rows)) throw new Error('Unexpected pending comments reply');
+        state.pendingRows = rows.filter(r => String(r.NURSE_NOTE || r.nurse_note || '').trim())
+          .map(r => ({
+            schedEventId: Number(r.SCH_EVENT_ID || r.sch_event_id || 0),
+            personId: Number(r.PERSON_ID || r.person_id || 0),
+            encntrId: Number(r.ENCNTR_ID || r.encntr_id || 0),
+            ptName: String(r.PATIENT_NAME || r.patient_name || ''),
+            mrn: String(r.MRN || r.mrn || ''),
+            apptDate: String(r.APPT_DATE || r.appt_date || ''),
+            note: String(r.NURSE_NOTE || r.nurse_note || ''),
+            highlight: String(r.HIGHLIGHT || r.highlight || '').toLowerCase(),
+            status: String(r.SCH_STATE || r.sch_state || ''),
+            attending: String(r.ATTENDING || r.attending || 'Unassigned attending'),
+            attendingPersonId: pendingAttendingId(r.ATTENDING_PERSON_ID ?? r.attending_person_id)
+          }))
+          .filter(r => r.schedEventId > 0 && r.personId > 0 && r.encntrId > 0);
+      } catch (error) {
+        state.pendingRows = [];
+        state.pendingError = error.message;
       }
-    }
+    })().finally(() => {
+      state.pendingRefresh = null;
+      state.pendingLoading = false;
+      syncPending();
+    });
+    return state.pendingRefresh;
   }
+
+  function findPending(id) {
+    if (pendingIsLoading() || pendingAssignmentError()) return;
+    return state.pending.find(row =>
+      String(row.schedEventId) === String(id) && state.selectedPhysicians.has(row.attendingPersonId));
+  }
+
   function renderPending() {
   const list = $('pendingCommentsList');
   if (!list) return;
 
-  if (state.pendingLoading) {
+  const loading = pendingIsLoading();
+  list.setAttribute('aria-busy', String(loading));
+  if (loading) {
     list.innerHTML = '<p class="muted">Loading pending comments…</p>';
     return;
   }
 
-  if (state.pendingError) {
+  const error = pendingAssignmentError() || state.pendingError;
+  if (error) {
     list.innerHTML =
       '<p class="pending-error">Unable to load pending comments: ' +
-      esc(state.pendingError) + '</p>';
+      esc(error) + '</p>';
+    return;
+  }
+
+  if (!state.selectedPhysicians.size) {
+    list.innerHTML = '<p class="muted">No physicians are currently assigned to you.</p>';
     return;
   }
 
   if (!state.pending.length) {
     list.innerHTML =
-      '<p class="muted">No pending comments from the last 30 days, including today.</p>';
+      '<p class="muted">No pending comments for your assigned physicians.</p>';
     return;
   }
 
@@ -656,9 +696,7 @@ attendingPersonId: Number(
 
   state.pending.forEach(r => {
     const name = r.attending || 'Unassigned attending';
-    const key = r.attendingPersonId
-      ? String(r.attendingPersonId)
-      : 'name:' + name;
+    const key = r.attendingPersonId;
 
     if (!groups.has(key)) {
       groups.set(key, {
@@ -772,7 +810,7 @@ attendingPersonId: Number(
 }
   async function clearPending(id) {
     if (CONFIG.readOnly || state.pendingClearing.has(String(id))) return;
-    const r = state.pending.find(item => String(item.schedEventId) === String(id));
+    const r = findPending(id);
     if (!r) return;
     const current = findAppointment(id);
     if (current && isDirty(current)) {
@@ -784,16 +822,19 @@ attendingPersonId: Number(
   '? The comment and highlight will be removed from the active dashboard.'
     )) return;
     state.pendingClearing.add(String(id));
+    let cleared = false;
     renderPending();
     try {
-    const args = '^MINE^,' + [
-    String(r.schedEventId),
-    String(r.personId),
-    String(r.encntrId),
-    cclString(''),
-    cclString(r.highlight),
-    cclString('CLEAR')
-    ].join(',');
+      await refreshAssignments();
+      if (CONFIG.readOnly || !findPending(id)) return;
+      const args = '^MINE^,' + [
+        String(r.schedEventId),
+        String(r.personId),
+        String(r.encntrId),
+        cclString(''),
+        cclString(r.highlight),
+        cclString('CLEAR')
+      ].join(',');
       const result = await cclCall(CONFIG.notesSaveProgram, args);
       if (Number(result.SUCCESS ?? result.success) !== 1 ||
           Number(result.SCH_EVENT_ID ?? result.sch_event_id) !== r.schedEventId) {
@@ -806,16 +847,16 @@ attendingPersonId: Number(
         state.edits.set(String(id), { ...saved });
         render();
       }
-      state.pending = state.pending.filter(item => String(item.schedEventId) !== String(id));
-      $('pendingCount').textContent = String(state.pending.length);
+      state.pendingRows = state.pendingRows.filter(item => String(item.schedEventId) !== String(id));
+      syncPending();
       notice('Pending comment resolved and archived.');
-      // Re-query to reconcile with the database, not just the local popup.
-      await loadPending();
+      cleared = true;
     } catch (error) {
       window.alert('Unable to clear comment: ' + error.message + '. The comment remains pending.');
     } finally {
       state.pendingClearing.delete(String(id));
       renderPending();
+      if (cleared) loadPending();
     }
   }
   function savedFor(a) {
@@ -1635,8 +1676,8 @@ attendingPersonId: Number(
     });
     $('pendingCommentsButton').addEventListener('click', () => {
       const dialog = $('pendingCommentsDialog');
-      if (!dialog.open) dialog.showModal();
       loadPending();
+      if (!dialog.open) dialog.showModal();
     });
     $('closePendingComments').addEventListener('click', () => $('pendingCommentsDialog').close());
     $('donePendingComments').addEventListener('click', () => $('pendingCommentsDialog').close());
@@ -1658,7 +1699,7 @@ attendingPersonId: Number(
   }
       const chart = e.target.closest('[data-pending-chart]');
       if (chart) {
-        const r = state.pending.find(item => String(item.schedEventId) === chart.dataset.pendingChart);
+        const r = findPending(chart.dataset.pendingChart);
         if (r) openChart(r);
         return;
       }
@@ -1888,6 +1929,10 @@ attendingPersonId: Number(
   });
   // Auto-refresh every 3 minutes
   setInterval(() => {
+    if (!document.hidden && $('pendingCommentsDialog').open) {
+      loadPending();
+      return;
+    }
     if (!document.hidden && !assignmentsCurrent() && !state.assignmentSaving) refreshAssignments();
     const active = document.activeElement;
     const editing = active && (
