@@ -754,3 +754,20 @@
     pointer-events: none;
 }
 .toolbar > .nurse-assignment-banner .assignment-physician-badge { pointer-events: auto; }
+
+#chargeNurseAccessStatus { background: #eef1f5; color: #526273; }
+#chargeNurseAccessStatus.editor-access { background: #e4f4e8; color: #176335; }
+#chargeNurseAccessStatus.admin-access { background: #d9e9ff; color: #174575; }
+
+.physician-dropdown-actions[hidden] { display: none !important; }
+.admin-physician-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border-bottom: 1px solid #e5edf5;
+  overflow-wrap: anywhere;
+}
+.admin-physician-row:last-child { border-bottom: 0; }
+.admin-physician-row button { flex: 0 0 auto; padding: 5px 9px; font-size: 12px; }
