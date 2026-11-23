@@ -27,6 +27,13 @@ const path = require('node:path');
         ATTENDING_PERSON_ID: attendingId, ATTENDING: 'Same Doctor Name',
         APPT_DATE: date, NURSE_NOTE: 'Pending note'
       }));
+      const role = new URLSearchParams(location.search).get('role');
+      if (role) {
+        appointments.push(
+          { id: 4, physician: 1883690, patient: 'Unassigned Physician Patient', note: '' },
+          { id: 5, physician: 0, patient: 'No Attending Patient', note: '', type: 'Chemo Clinic Lab Visit' }
+        );
+      }
       window.mock = { assignments: [mine, other], pending, calls: [], printed: '', printCount: 0 };
       window.print = () => {
         mock.printCount++;
@@ -47,6 +54,12 @@ const path = require('node:path');
           queueMicrotask(() => {
             switch (this.program) {
               case 'mrd_onc_charge_nurse_access':
+                if (role === 'error') return finish({}, 503);
+                if (role) return finish({
+                  USER_ID: role === 'admin' ? 6227469 : 700, CAN_EDIT: role === 'admin' ? 0 : 1,
+                  IS_ADMIN: role === 'inconsistent' ? 0 : 1, ACCESS_LEVEL: 'ADMIN',
+                  CAN_VIEW_ALL: 1, CAN_RELEASE_ANY: role === 'view-only' ? 0 : 1
+                });
                 return finish({ USER_ID: '6227469', USER_NAME: 'Same Name', CAN_EDIT: 1 });
               case 'mrd_onc_charge_assign_get':
                 if (m.timeoutGet) return;
@@ -68,12 +81,21 @@ const path = require('node:path');
                   return finish({ SUCCESS: 1 });
                 };
                 return;
+              case 'mrd_onc_admin_release':
+                m.completeRelease = () => {
+                  if (m.failRelease) return finish({ SUCCESS: 0, MESSAGE: 'Release denied in CERT' });
+                  const [, id] = args.split(',');
+                  const assignment = m.assignments.find(a => String(a.PHYSICIAN_ID) === id);
+                  m.assignments = m.assignments.filter(a => String(a.PHYSICIAN_ID) !== id);
+                  return finish({ SUCCESS: 1, PHYSICIAN_ID: id, NURSE_PRSNL_ID: assignment.NURSE_PRSNL_ID });
+                };
+                return;
               case 'mrd_onc_charge_nurse_mpage':
                 return finish({ LIST: appointments.map(a => ({
                   pt_name: a.patient + (args.includes('19-NOV-2026') ? ' on next date' : ''),
                   attending: 'Same Doctor Name', attending_person_id: a.physician,
                   sched_event_id: a.id, person_id: a.id, encntr_id: a.id,
-                  mrn: 'MRN' + a.id, pplan_name: 'Treatment Plan', resource: 'Chair ' + a.id,
+                  appt_type: a.type, mrn: 'MRN' + a.id, pplan_name: 'Treatment Plan', resource: 'Chair ' + a.id,
                   appt_dttm: '2026-NOV-18 09:00', appt_status: 'Confirmed', dot: 'Day 1'
                 })) });
               case 'mrd_onc_nurse_notes_get':
@@ -360,6 +382,93 @@ const path = require('node:path');
     await wait(pendingList, 'Unexpected physician assignment response');
     assert.equal(await at('#pendingCount').textContent(), '0');
     await at('#donePendingComments').click();
+    await page.goto('http://localhost:8765/index.html?role=admin');
+    await wait('#chargeNurseAccessStatus', 'CI Admin · View All');
+    await wait('#appointmentCount', '5');
+    assert.match(await at('#appointmentGroups').innerText(), /Unassigned Physician Patient/);
+    assert.match(await at('#appointmentGroups').innerText(), /No Attending Patient/);
+    assert.match(await at('[data-note="1"]').inputValue(), /Saved first line/);
+    assert.equal(await at('[data-note]:not([readonly])').count(), 0);
+    assert.equal(await at('[data-palette], [data-save]').count(), 0);
+    await at('#searchBox').fill('MRN4');
+    await wait('#appointmentCount', '1');
+    await at('#searchBox').fill('');
+    await at('#printOptionsButton').click();
+    await at('[name="printLayout"][value="simple"]').check();
+    await at('#printOnlyWithComments').uncheck();
+    await at('#doPrint').click();
+    assert.match(await page.evaluate(() => mock.printed), /Unassigned Physician Patient/);
+
+    await at('#physicianDropdownButton').click();
+    assert.equal(await at('.admin-physician-row').count(), 9);
+    assert(await at('#physicianNurseActions').isHidden());
+    assert(await at('#selectAllPhysicians').isDisabled());
+    await at('#selectAllPhysicians').dispatchEvent('click');
+    assert.deepEqual(await saves(), []);
+    const release = at('[data-admin-release="1253867"]');
+    const releaseCalls = () => page.evaluate(() => mock.calls.filter(([name]) =>
+      name === 'mrd_onc_admin_release').map(([, args]) => args));
+    const confirmations = [];
+    page.once('dialog', dialog => {
+      confirmations.push(dialog.message());
+      return dialog.dismiss();
+    });
+    await release.click();
+    assert.match(confirmations[0], /Jeffrey Silverman.*Same Name/);
+    assert.deepEqual(await releaseCalls(), []);
+
+    await page.evaluate(() => { mock.failRelease = true; });
+    page.once('dialog', dialog => dialog.accept());
+    await release.click();
+    assert(await release.isDisabled());
+    await page.evaluate(() => {
+      const button = document.querySelector('[data-admin-release="1253867"]');
+      button.disabled = false;
+      const confirm = window.confirm;
+      window.confirm = () => true;
+      button.click();
+      window.confirm = confirm;
+      mock.completeRelease();
+    });
+    await wait('#physicianAssignmentStatus', 'Release denied in CERT');
+    assert.deepEqual(await releaseCalls(), ['^MINE^,1253867']);
+    assert.equal(await release.count(), 1);
+
+    const loads = () => page.evaluate(() => mock.calls.filter(([name]) =>
+      name === 'mrd_onc_charge_nurse_mpage').length);
+    const beforeReleaseLoads = await loads();
+    await page.evaluate(() => { mock.failRelease = false; });
+    page.once('dialog', dialog => dialog.accept());
+    await release.click();
+    await page.evaluate(() => mock.completeRelease());
+    await page.waitForFunction(() => !document.querySelector('[data-admin-release="1253867"]'));
+    await wait('.admin-physician-row:nth-child(2)', 'Unassigned');
+    assert.equal(await loads(), beforeReleaseLoads + 1);
+    await wait('#appointmentCount', '5');
+    assert.deepEqual(await saves(), []);
+    await at('#pendingCommentsButton').click();
+    await wait(pendingList, 'Assigned Pending');
+    assert.equal(await at('[data-pending-clear]').count(), 0);
+
+    for (const [role, label, count] of [
+      ['view-only', 'CI Admin · View All', '5'],
+      ['inconsistent', 'Read-only', '0'],
+      ['error', 'Read-only', '0']
+    ]) {
+      await page.goto('http://localhost:8765/index.html?role=' + role);
+      await wait('#chargeNurseAccessStatus', label);
+      await wait('#appointmentCount', count);
+      assert(await at('#selectAllPhysicians').isDisabled());
+      assert.equal(await at('[data-admin-release]').count(), 0);
+      await page.evaluate(() => {
+        const button = document.createElement('button');
+        button.dataset.adminRelease = '1253867';
+        window.confirm = () => true;
+        document.getElementById('physicianCheckboxList').appendChild(button);
+        button.click();
+      });
+      assert.deepEqual(await releaseCalls(), []);
+    }
     assert.deepEqual(errors, []);
     console.log('Mocked Chromium workflow passed');
   } finally {

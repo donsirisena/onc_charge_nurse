@@ -11,6 +11,7 @@
     notesSaveProgram: 'mrd_onc_nurse_notes_save:group1',
     assignmentGetProgram: 'mrd_onc_charge_assign_get:group1',
     assignmentSaveProgram: 'mrd_onc_charge_assign_save:group1',
+    adminReleaseProgram: 'mrd_onc_admin_release:group1',
     accessProgram: 'mrd_onc_charge_nurse_access:group1',
     pendingProgram: 'mrd_onc_nurse_notes_pending:group1',
     bloodSummaryProgram: 'mrd_onc_charge_nurse_bloodwork:group1',
@@ -40,11 +41,15 @@
   ];
   const activePhysicians = () => ONCOLOGY_PHYSICIANS.filter(p => p.active);
 
+  const isAdmin = () => state.accessChecked && state.accessLevel === 'ADMIN';
+  const canViewAll = () => isAdmin() && state.canViewAll;
   const $ = id => document.getElementById(id);
   const state = {
     appointments: [],
     accessLevel: 'READ_ONLY',
     accessChecked: false,
+    canViewAll: false,
+    canReleaseAny: false,
     userId: 0,
     userName: '',
     selectedPhysicians: new Set(),
@@ -239,7 +244,7 @@
       throw new Error('Unexpected CCL reply: LIST is not an array');
     }
     return list.map(normalized).filter(
-      a => a.schedEventId && !excludedTypes.has(a.apptType)
+      a => a.schedEventId && (canViewAll() || !excludedTypes.has(a.apptType))
     );
   }
   function getCclRequest() {
@@ -431,6 +436,52 @@
     }
   }
 
+  async function releaseAdminAssignment(id) {
+    if (!isAdmin() || !state.canReleaseAny || state.assignmentSaving ||
+        state.assignmentRefresh || !assignmentsCurrent()) return;
+
+    const physician = activePhysicians().find(p => String(p.id) === id);
+    const assignment = state.assignments.get(id);
+    if (!physician || !assignment) return;
+
+    const nurse = assignmentNurseName(assignment);
+    if (!window.confirm('Release the assignment for ' + physician.name +
+        ' from ' + nurse + '?')) return;
+
+    state.assignmentSaving = true;
+    state.assignmentSaveError = '';
+    renderPhysicianSelector();
+    syncPending();
+    try {
+      let released = false;
+      try {
+        const root = await cclCall(CONFIG.adminReleaseProgram, '^MINE^,' + id, 30000);
+        if (Number(root.SUCCESS ?? root.success) !== 1) {
+          throw new Error(root.MESSAGE || root.message || 'Release was unsuccessful.');
+        }
+        if (personnelKey(root.PHYSICIAN_ID ?? root.physician_id) !== id) {
+          throw new Error('CCL did not confirm the requested physician.');
+        }
+        released = true;
+      } catch (error) {
+        state.assignmentSaveError = 'Unable to confirm release: ' + error.message;
+      }
+      await refreshAssignments(true);
+      if (released) {
+        render();
+        load();
+      }
+    } finally {
+      state.assignmentSaving = false;
+      renderPhysicianSelector();
+      syncPending();
+    }
+  }
+
+  function assignmentNurseName(assignment) {
+    return assignment.name || 'Nurse ID ' + assignment.owner;
+  }
+
   // The UI is read-only until the Cerner authorization CCL succeeds.
   // The Save CCL independently enforces authorization on the server.
   function showAccessStatus() {
@@ -446,9 +497,10 @@
     }
     const allowed = !CONFIG.readOnly;
     badge.textContent = !state.accessChecked ? 'Checking access…' :
-      allowed ? (state.accessLevel === 'ADMIN' ? 'CI Admin · Edit' : 'Charge Nurse · Edit') : 'Read-only';
-    badge.style.background = allowed ? '#e4f4e8' : '#eef1f5';
-    badge.style.color = allowed ? '#176335' : '#526273';
+      canViewAll() ? 'CI Admin · View All' : isAdmin() ? 'CI Admin · Read-only' :
+      allowed ? 'Charge Nurse · Edit' : 'Read-only';
+    badge.classList.toggle('admin-access', canViewAll());
+    badge.classList.toggle('editor-access', allowed);
     badge.title = allowed ? 'Authorized to edit nurse comments and highlights' :
       'Nurse comments and highlights are view-only';
   }
@@ -458,6 +510,8 @@
     CONFIG.readOnly = true;
     state.accessLevel = 'READ_ONLY';
     state.accessChecked = false;
+    state.canViewAll = false;
+    state.canReleaseAny = false;
     state.userId = 0;
     state.userName = '';
     renderPhysicianSelector();
@@ -466,14 +520,18 @@
     showAccessStatus();
     renderPending();
     try {
-      const root = await cclCall(CONFIG.accessProgram, '^MINE^');
-      const canEdit = Number(root.CAN_EDIT ?? root.can_edit ?? 0) === 1;
-      const isAdmin = Number(root.IS_ADMIN ?? root.is_admin ?? 0) === 1;
-      const level = String(root.ACCESS_LEVEL ?? root.access_level ?? 'READ_ONLY').toUpperCase();
-      CONFIG.readOnly = !canEdit;
-      state.accessLevel = canEdit ? (isAdmin && level === 'ADMIN' ? 'ADMIN' : 'EDITOR') : 'READ_ONLY';
+      const root = await cclCall(CONFIG.accessProgram, '^MINE^', 30000);
+      const granted = value => value === 1 || value === '1';
+      const adminFlag = granted(root.IS_ADMIN ?? root.is_admin);
+      const adminLevel = String(root.ACCESS_LEVEL ?? root.access_level ?? '').trim().toUpperCase() === 'ADMIN';
+      const admin = adminFlag && adminLevel;
+      const canEdit = !adminFlag && !adminLevel && granted(root.CAN_EDIT ?? root.can_edit);
       state.userId = Number(root.USER_ID ?? root.user_id ?? 0);
       state.userName = String(root.USER_NAME ?? root.user_name ?? '').trim();
+      CONFIG.readOnly = !canEdit;
+      state.accessLevel = admin ? 'ADMIN' : canEdit ? 'EDITOR' : 'READ_ONLY';
+      state.canViewAll = admin && granted(root.CAN_VIEW_ALL ?? root.can_view_all);
+      state.canReleaseAny = admin && granted(root.CAN_RELEASE_ANY ?? root.can_release_any);
     } catch (error) {
       CONFIG.readOnly = true;
       state.accessLevel = 'READ_ONLY';
@@ -488,6 +546,7 @@
         state.edits = new Map([...state.saved].map(([id, note]) => [id, { ...note }]));
       }
       showAccessStatus();
+      renderPhysicianSelector();
       renderAssignmentBanner();
       renderPending();
       if (state.date) render();
@@ -1010,11 +1069,12 @@
   }
 
   function matchesPhysicianSelection(a) {
-    return allPhysiciansSelected() ||
+    return canViewAll() || allPhysiciansSelected() ||
       (assignmentsCurrent() && state.selectedPhysicians.has(String(a.attendingPersonId)));
   }
 
   function physicianSelectionLabel() {
+    if (canViewAll()) return 'All Attendings';
     if (!assignmentsCurrent()) return 'Physician Assignments Unavailable';
     const count = activePhysicians().filter(p => state.selectedPhysicians.has(String(p.id))).length;
     return allPhysiciansSelected() ? 'All Attendings' :
@@ -1058,6 +1118,35 @@
   function renderPhysicianSelector() {
     const doctors = activePhysicians();
     const current = assignmentsCurrent();
+    const admin = isAdmin();
+    $('physicianDropdownLabel').textContent = admin ? 'Physician Assignments' : 'Assigned Physicians';
+    $('physicianNurseActions').hidden = admin;
+    if (admin) {
+      const locked = !state.canReleaseAny || state.assignmentRefresh || state.assignmentSaving;
+      $('selectAllPhysicians').disabled = true;
+      $('clearPhysicianSelection').disabled = true;
+      $('physicianDropdownButton').textContent = 'Physician Assignments ▾';
+      $('physicianAssignmentStatus').textContent = [
+        state.assignmentSaveError,
+        state.assignmentLoadError || (state.assignmentSaving ? 'Releasing assignment…' :
+          state.assignmentRefresh ? 'Refreshing assignments…' : '')
+      ].filter(Boolean).join(' ');
+      $('physicianCheckboxList').innerHTML = doctors.map(physician => {
+        const id = String(physician.id);
+        const assignment = current && state.assignments.get(id);
+        const status = !current ? 'Status unavailable' :
+          assignment ? assignmentNurseName(assignment) : 'Unassigned';
+        return '<div class="admin-physician-row"><div>' +
+          '<strong>' + esc(physician.name) + '</strong>' +
+          '<div class="muted">' + esc(status) + '</div></div>' +
+          (assignment && state.canReleaseAny
+            ? '<button type="button" class="secondary" data-admin-release="' + id +
+              '" aria-label="Release assignment for ' + esc(physician.name) + '"' +
+              (locked ? ' disabled' : '') + '>Release</button>'
+            : '') + '</div>';
+      }).join('');
+      return;
+    }
     const nurseId = personnelKey(state.userId);
     const locked = !current || state.assignmentRefresh || state.assignmentSaving || CONFIG.readOnly || !nurseId;
     const selectedCount = current ? doctors.filter(p => state.selectedPhysicians.has(String(p.id))).length : 0;
@@ -1103,7 +1192,8 @@
       nurse.title = name;
     }
     if (doctors) {
-      doctors.innerHTML = selected.length ? selected.map(p =>
+      doctors.innerHTML = canViewAll() ? '<span class="assignment-none">All attendings</span>' :
+        selected.length ? selected.map(p =>
         '<span class="assignment-physician-badge" style="background:' + p.color +
         '" title="' + esc(p.name) + '" aria-label="' + esc(p.name) + '">' +
         esc(p.initials) + '</span>'
@@ -1587,7 +1677,7 @@
 
   // Load appointments
   async function load() {
-    if (state.loading) return;
+    if (!state.accessChecked || state.loading) return;
     const version = ++state.loadVersion;
     const requestedDate = state.date;
     state.loading = true;
@@ -1646,6 +1736,12 @@
     $('physicianCheckboxList').addEventListener('change', e => {
       const id = e.target.dataset.physicianId;
       if (id && !e.target.disabled) changeAssignments([id], e.target.checked ? 'ASSIGN' : 'RELEASE');
+    });
+    $('physicianCheckboxList').addEventListener('click', e => {
+      const release = e.target.closest('[data-admin-release]');
+      if (!release || release.disabled) return;
+      e.stopPropagation();
+      releaseAdminAssignment(release.dataset.adminRelease);
     });
     $('selectAllPhysicians').addEventListener('click', () => {
       changeAssignments(activePhysicians().map(p => String(p.id)), 'ASSIGN');
@@ -1799,7 +1895,7 @@
     function withPrintAssignments(action, status, stillActive, previewButton) {
       if (printRefreshPending || !stillActive()) return;
       status.textContent = '';
-      if ($('printAttending').value !== 'current') {
+      if (canViewAll() || $('printAttending').value !== 'current') {
         action();
         return;
       }
