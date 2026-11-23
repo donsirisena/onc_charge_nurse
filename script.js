@@ -653,6 +653,7 @@
   }
 
   function pendingAssignmentError() {
+    if (canViewAll()) return '';
     if (!personnelKey(state.userId)) return 'Logged-in personnel ID unavailable.';
     if (!assignmentsCurrent()) {
       return state.assignmentLoadError || 'Unable to verify current physician assignments.';
@@ -661,29 +662,36 @@
   }
 
   function pendingIsLoading() {
-    return state.pendingLoading || state.assignmentRefresh !== null || state.assignmentSaving;
+    return state.pendingLoading ||
+      (!canViewAll() && (state.assignmentRefresh !== null || state.assignmentSaving));
+  }
+
+  function matchesPendingScope(row) {
+    return canViewAll() || state.selectedPhysicians.has(row.attendingPersonId);
   }
 
   function syncPending() {
     const loading = pendingIsLoading();
     state.pending = loading || state.pendingError || pendingAssignmentError()
       ? []
-      : state.pendingRows.filter(row => state.selectedPhysicians.has(row.attendingPersonId));
+      : state.pendingRows.filter(matchesPendingScope);
     $('pendingCount').textContent = loading ? 'Loading…' : String(state.pending.length);
     renderPending();
   }
 
   function loadPending() {
     if (state.pendingRefresh) return state.pendingRefresh;
-    if (state.pendingClearing.size) return;
+    if (!state.accessChecked || state.pendingClearing.size) return;
     state.pendingLoading = true;
     state.pendingError = '';
     syncPending();
 
     state.pendingRefresh = (async () => {
       try {
-        await refreshAssignments();
-        if (pendingAssignmentError() || state.assignmentSaving) return;
+        if (!canViewAll()) {
+          await refreshAssignments();
+          if (pendingAssignmentError() || state.assignmentSaving) return;
+        }
         const root = await cclCall(CONFIG.pendingProgram, '^MINE^', 30000);
         const rows = root.PENDING ?? root.pending ?? [];
         if (!Array.isArray(rows)) throw new Error('Unexpected pending comments reply');
@@ -717,7 +725,7 @@
   function findPending(id) {
     if (pendingIsLoading() || pendingAssignmentError()) return;
     return state.pending.find(row =>
-      String(row.schedEventId) === String(id) && state.selectedPhysicians.has(row.attendingPersonId));
+      String(row.schedEventId) === String(id) && matchesPendingScope(row));
   }
 
   function renderPending() {
@@ -739,14 +747,15 @@
     return;
   }
 
-  if (!state.selectedPhysicians.size) {
+  if (!canViewAll() && !state.selectedPhysicians.size) {
     list.innerHTML = '<p class="muted">No physicians are currently assigned to you.</p>';
     return;
   }
 
   if (!state.pending.length) {
-    list.innerHTML =
-      '<p class="muted">No pending comments for your assigned physicians.</p>';
+    list.innerHTML = canViewAll()
+      ? '<p class="muted">No pending nurse comments.</p>'
+      : '<p class="muted">No pending comments for your assigned physicians.</p>';
     return;
   }
 

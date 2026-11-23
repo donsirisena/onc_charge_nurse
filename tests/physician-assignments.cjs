@@ -28,6 +28,12 @@ const path = require('node:path');
         APPT_DATE: date, NURSE_NOTE: 'Pending note'
       }));
       const role = new URLSearchParams(location.search).get('role');
+      if (role === 'admin' || role === 'view-only') {
+        pending.push({
+          ...pending[0], SCH_EVENT_ID: 15, PATIENT_NAME: 'Unassigned Physician Pending',
+          ATTENDING_PERSON_ID: 1883690, ATTENDING: 'Unassigned Physician'
+        });
+      }
       if (role) {
         appointments.push(
           { id: 4, physician: 1883690, patient: 'Unassigned Physician Patient', note: '' },
@@ -35,6 +41,7 @@ const path = require('node:path');
         );
       }
       window.mock = { assignments: [mine, other], pending, calls: [], printed: '', printCount: 0 };
+      window.APPLINK = (...args) => { mock.chart = args; };
       window.print = () => {
         mock.printCount++;
         mock.printed = document.getElementById('printArea').innerHTML;
@@ -58,7 +65,7 @@ const path = require('node:path');
                 if (role) return finish({
                   USER_ID: role === 'admin' ? 6227469 : 700, CAN_EDIT: role === 'admin' ? 0 : 1,
                   IS_ADMIN: role === 'inconsistent' ? 0 : 1, ACCESS_LEVEL: 'ADMIN',
-                  CAN_VIEW_ALL: 1, CAN_RELEASE_ANY: role === 'view-only' ? 0 : 1
+                  CAN_VIEW_ALL: role === 'no-view' ? 0 : 1, CAN_RELEASE_ANY: role === 'admin' || role === 'inconsistent' ? 1 : 0
                 });
                 return finish({ USER_ID: '6227469', USER_NAME: 'Same Name', CAN_EDIT: 1 });
               case 'mrd_onc_charge_assign_get':
@@ -399,6 +406,51 @@ const path = require('node:path');
     await at('#doPrint').click();
     assert.match(await page.evaluate(() => mock.printed), /Unassigned Physician Patient/);
 
+    await at('#pendingCommentsButton').click();
+    await wait('#pendingCount', '5');
+    for (const patient of ['Assigned Pending', 'Other Pending', 'Historical Pending',
+      'Unlinked Pending', 'Unassigned Physician Pending']) {
+      await wait(pendingList, patient);
+    }
+    assert.equal(await at('.pending-attending-group').count(), 4);
+    const otherGroup = at('[data-pending-toggle="1253867"]');
+    await otherGroup.click();
+    assert.equal(await otherGroup.getAttribute('aria-expanded'), 'false');
+    assert.equal(await at('[data-pending-chart="12"]').count(), 0);
+    await otherGroup.click();
+    await wait(pendingList, 'Other Pending');
+    await at('[data-pending-chart="12"]').click();
+    assert.deepEqual(await page.evaluate(() => mock.chart), [
+      0, 'PowerChart.exe', '/PERSONID=12 /ENCNTRID=12'
+    ]);
+    assert.equal(await at('[data-pending-clear]').count(), 0);
+    await page.evaluate(() => {
+      const clear = document.createElement('button');
+      clear.dataset.pendingClear = '12';
+      const confirm = window.confirm;
+      window.confirm = () => true;
+      document.getElementById('pendingCommentsList').appendChild(clear);
+      clear.click();
+      window.confirm = confirm;
+    });
+    assert.equal(await page.evaluate(() => mock.calls.filter(([, args]) => args.endsWith('^CLEAR^')).length), 0);
+
+    await page.evaluate(() => { mock.failGet = true; mock.holdPending = true; });
+    const adminAssignmentGets = await assignmentGets();
+    await at('#refreshPendingComments').click();
+    await page.waitForFunction(() => typeof mock.finishPending === 'function');
+    await assertPendingLoading();
+    assert.equal(await assignmentGets(), adminAssignmentGets);
+    await page.evaluate(() => {
+      mock.pending = [];
+      mock.holdPending = false;
+      mock.finishPending();
+    });
+    await wait(pendingList, 'No pending nurse comments.');
+    assert.equal(await at('#pendingCount').textContent(), '0');
+    await page.evaluate(() => { mock.failGet = false; });
+    await at('#donePendingComments').click();
+
     await at('#physicianDropdownButton').click();
     assert.equal(await at('.admin-physician-row').count(), 9);
     assert(await at('#physicianNurseActions').isHidden());
@@ -446,12 +498,9 @@ const path = require('node:path');
     assert.equal(await loads(), beforeReleaseLoads + 1);
     await wait('#appointmentCount', '5');
     assert.deepEqual(await saves(), []);
-    await at('#pendingCommentsButton').click();
-    await wait(pendingList, 'Assigned Pending');
-    assert.equal(await at('[data-pending-clear]').count(), 0);
-
     for (const [role, label, count] of [
       ['view-only', 'CI Admin · View All', '5'],
+      ['no-view', 'CI Admin · Read-only', '0'],
       ['inconsistent', 'Read-only', '0'],
       ['error', 'Read-only', '0']
     ]) {
@@ -468,6 +517,15 @@ const path = require('node:path');
         button.click();
       });
       assert.deepEqual(await releaseCalls(), []);
+      await at('#pendingCommentsButton').click();
+      if (role === 'view-only') {
+        await wait('#pendingCount', '5');
+        await wait(pendingList, 'Other Pending');
+      } else {
+        await wait('#pendingCount', '0');
+        assert.doesNotMatch(await at(pendingList).innerText(), /Other Pending|Unlinked Pending/);
+      }
+      assert.equal(await at('[data-pending-clear]').count(), 0);
     }
     assert.deepEqual(errors, []);
     console.log('Mocked Chromium workflow passed');
